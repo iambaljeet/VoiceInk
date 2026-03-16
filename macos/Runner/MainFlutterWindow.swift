@@ -17,6 +17,11 @@ class MainFlutterWindow: NSWindow {
     self.isMovableByWindowBackground = true
     self.collectionBehavior = [.canJoinAllSpaces, .stationary]
 
+    // Ensure Flutter's rendering layer is also transparent
+    flutterViewController.view.wantsLayer = true
+    flutterViewController.view.layer?.isOpaque = false
+    flutterViewController.view.layer?.backgroundColor = CGColor.clear
+
     RegisterGeneratedPlugins(registry: flutterViewController)
 
     super.awakeFromNib()

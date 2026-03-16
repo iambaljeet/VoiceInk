@@ -49,6 +49,7 @@ class DictationService extends ChangeNotifier {
 
     final prefs = await SharedPreferences.getInstance();
     _cleanup.removeFillers = prefs.getBool('cleanup_fillers') ?? true;
+    _cleanup.skipNonSpeech = prefs.getBool('cleanup_nonspeech') ?? true;
     _cleanup.convertPunctuation = prefs.getBool('cleanup_punctuation') ?? true;
     _cleanup.autoCapitalize = prefs.getBool('cleanup_capitalize') ?? true;
 
@@ -174,13 +175,26 @@ class DictationService extends ChangeNotifier {
     _chunkTimer?.cancel();
     _chunkTimer = null;
 
-    // Process final chunk
-    _state = DictationState.processing;
+    // Grab final audio, then immediately go idle (no visible processing state)
+    String? audioPath;
+    try {
+      audioPath = await _audio.stopRecording();
+    } catch (_) {}
+
+    _state = DictationState.idle;
     notifyListeners();
 
+    // Process final chunk in background (fire-and-forget)
+    if (audioPath != null) {
+      _transcribeFinalChunk(audioPath);
+    } else {
+      _audio.cleanup();
+    }
+  }
+
+  Future<void> _transcribeFinalChunk(String audioPath) async {
     try {
-      final audioPath = await _audio.stopRecording();
-      if (audioPath != null && await File(audioPath).exists()) {
+      if (await File(audioPath).exists()) {
         final fileSize = await File(audioPath).length();
         if (fileSize > 1000) {
           final rawText = await _whisper!.transcribe(
@@ -189,7 +203,6 @@ class DictationService extends ChangeNotifier {
           );
           final cleaned = _cleanup.process(rawText);
           if (cleaned.isNotEmpty) {
-            _lastTranscription += ((_lastTranscription.isNotEmpty) ? ' ' : '') + cleaned;
             await _injection.injectText('$cleaned ');
           }
         }
@@ -198,10 +211,6 @@ class DictationService extends ChangeNotifier {
     } catch (e) {
       debugPrint('[VoiceInk] Final chunk error: $e');
     }
-
-    _state = DictationState.idle;
-    notifyListeners();
-
     await _audio.cleanup();
   }
 
@@ -218,6 +227,7 @@ class DictationService extends ChangeNotifier {
   Future<void> savePreferences() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('cleanup_fillers', _cleanup.removeFillers);
+    await prefs.setBool('cleanup_nonspeech', _cleanup.skipNonSpeech);
     await prefs.setBool('cleanup_punctuation', _cleanup.convertPunctuation);
     await prefs.setBool('cleanup_capitalize', _cleanup.autoCapitalize);
     if (modelManager.selectedModelId != null) {

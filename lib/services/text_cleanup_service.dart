@@ -1,10 +1,12 @@
 /// Post-processes transcribed text:
 /// - Removes filler words (um, uh, etc.)
+/// - Removes non-speech sounds like (laughing), [BLANK_AUDIO], etc.
 /// - Converts spoken punctuation to symbols
 /// - Auto-capitalizes sentences
 /// - Trims extra whitespace
 class TextCleanupService {
   bool removeFillers = true;
+  bool skipNonSpeech = true;
   bool convertPunctuation = true;
   bool autoCapitalize = true;
 
@@ -49,6 +51,10 @@ class TextCleanupService {
 
     if (removeFillers) {
       result = _removeFillerWords(result);
+    }
+
+    if (skipNonSpeech) {
+      result = _removeNonSpeech(result);
     }
 
     if (convertPunctuation) {
@@ -109,5 +115,17 @@ class TextCleanupService {
     }
 
     return buffer.toString();
+  }
+
+  /// Remove non-speech annotations: (laughing), [BLANK_AUDIO], *sighs*, etc.
+  String _removeNonSpeech(String text) {
+    var result = text;
+    // (laughing), (clicking), (clapping), etc.
+    result = result.replaceAll(RegExp(r'\([^)]*\)'), '');
+    // [BLANK_AUDIO], [MUSIC], [LAUGHTER], etc.
+    result = result.replaceAll(RegExp(r'\[[^\]]*\]'), '');
+    // *sighs*, *laughs*, etc.
+    result = result.replaceAll(RegExp(r'\*[^*]+\*'), '');
+    return result;
   }
 }

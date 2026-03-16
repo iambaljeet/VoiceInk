@@ -59,6 +59,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
                 _buildToggle(
+                  'Skip non-speech sounds',
+                  'Removes (laughing), (clicking), [BLANK_AUDIO] etc.',
+                  widget.dictationService.cleanup.skipNonSpeech,
+                  (v) {
+                    setState(() {
+                      widget.dictationService.cleanup.skipNonSpeech = v;
+                    });
+                    widget.dictationService.savePreferences();
+                  },
+                ),
+                _buildToggle(
                   'Convert spoken punctuation',
                   '"comma" → "," / "period" → "." etc.',
                   widget.dictationService.cleanup.convertPunctuation,
@@ -109,7 +120,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           SizedBox(height: 2),
                           Text(
-                            'Hold to record, release to transcribe',
+                            'Toggle dictation on/off',
                             style: TextStyle(color: Colors.white60, fontSize: 12),
                           ),
                         ],

@@ -8,6 +8,7 @@ import 'package:system_tray/system_tray.dart';
 import 'package:path_provider/path_provider.dart';
 import 'services/model_manager.dart';
 import 'services/dictation_service.dart';
+import 'services/permission_service.dart';
 import 'ui/floating_indicator.dart';
 import 'ui/settings_screen.dart';
 
@@ -15,7 +16,6 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
   await hotKeyManager.unregisterAll();
-
   runApp(const VoiceInkApp());
 }
 
@@ -29,11 +29,14 @@ class VoiceInkApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: Colors.transparent,
+        canvasColor: Colors.transparent,
       ),
       home: const VoiceInkHome(),
     );
   }
 }
+
+enum AppMode { loading, permissions, capsule, settings }
 
 class VoiceInkHome extends StatefulWidget {
   const VoiceInkHome({super.key});
@@ -45,12 +48,14 @@ class VoiceInkHome extends StatefulWidget {
 class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
   late ModelManager _modelManager;
   late DictationService _dictation;
+  final PermissionService _permissions = PermissionService();
   SystemTray? _systemTray;
-  bool _initialized = false;
-  bool _showSettings = false;
+
+  AppMode _mode = AppMode.loading;
   bool _capsuleVisible = true;
+  Timer? _permPoll;
   HotKey? _dictationHotKey;
-  HotKey? _toggleVisibilityHotKey;
+  HotKey? _toggleHotKey;
 
   @override
   void initState() {
@@ -58,51 +63,96 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
     windowManager.addListener(this);
     _modelManager = ModelManager();
     _dictation = DictationService(modelManager: _modelManager);
-    _initAll();
+    _boot();
   }
 
-  Future<void> _initAll() async {
-    // Set up window FIRST before any async work
+  Future<void> _boot() async {
+    debugPrint('[VoiceInk] Checking permissions...');
+    await _permissions.checkAll();
+    debugPrint('[VoiceInk] mic=${_permissions.micGranted} acc=${_permissions.accessibilityGranted}');
+
+    if (!_permissions.allGranted) {
+      _mode = AppMode.permissions;
+      if (mounted) setState(() {});
+      await _setupPermissionWindow();
+      _permPoll = Timer.periodic(
+        const Duration(seconds: 2),
+        (_) => _recheckPerms(),
+      );
+      return;
+    }
+
+    await _goLive();
+  }
+
+  Future<void> _recheckPerms() async {
+    await _permissions.checkAll();
+    if (mounted) setState(() {});
+    if (_permissions.allGranted) {
+      _permPoll?.cancel();
+      _permPoll = null;
+      await _goLive();
+    }
+  }
+
+  Future<void> _goLive() async {
+    _mode = AppMode.capsule;
+    if (mounted) setState(() {});
     await _setupCapsuleWindow();
 
     try {
       await _modelManager.init();
+      debugPrint('[VoiceInk] Models: ${_modelManager.downloadedModels.length}');
       await _dictation.init();
       await _registerHotkeys();
     } catch (e) {
       debugPrint('[VoiceInk] Init error: $e');
     }
 
-    // System tray last — it's least critical
     try {
       await _initSystemTray();
     } catch (e) {
-      debugPrint('[VoiceInk] Tray init error (non-fatal): $e');
+      debugPrint('[VoiceInk] Tray error: $e');
     }
 
-    if (mounted) setState(() => _initialized = true);
+    await windowManager.setPreventClose(true);
   }
 
-  Future<void> _setupCapsuleWindow() async {
-    await windowManager.setSize(const Size(200, 50));
-    await windowManager.setMinimumSize(const Size(160, 44));
+  // ───── Window configs ─────
+
+  Future<void> _setupPermissionWindow() async {
+    await windowManager.setSize(const Size(400, 360));
+    await windowManager.setMinimumSize(const Size(400, 360));
+    await windowManager.setMaximumSize(const Size(400, 360));
     await windowManager.setAlwaysOnTop(true);
     await windowManager.setTitleBarStyle(TitleBarStyle.hidden,
         windowButtonVisibility: false);
-    await windowManager.setSkipTaskbar(true);
+    await windowManager.setBackgroundColor(const Color(0xFF1a1a2e));
+    await windowManager.setHasShadow(true);
+    await windowManager.center();
+    await windowManager.show();
+    await windowManager.focus();
+  }
+
+  Future<void> _setupCapsuleWindow() async {
+    await windowManager.setMaximumSize(const Size(800, 200));
+    await windowManager.setSize(const Size(180, 50));
+    await windowManager.setMinimumSize(const Size(50, 50));
+    await windowManager.setAlwaysOnTop(true);
+    await windowManager.setTitleBarStyle(TitleBarStyle.hidden,
+        windowButtonVisibility: false);
     await windowManager.setBackgroundColor(Colors.transparent);
     await windowManager.setHasShadow(false);
     await windowManager.setPosition(const Offset(600, 40));
     await windowManager.show();
+    await windowManager.focus();
   }
 
+  // ───── System tray ─────
+
   Future<void> _initSystemTray() async {
-    // Write tray icon to a temp file from bundled asset
     final iconPath = await _extractTrayIcon();
-    if (iconPath == null) {
-      debugPrint('[VoiceInk] Could not create tray icon, skipping tray');
-      return;
-    }
+    if (iconPath == null) return;
 
     _systemTray = SystemTray();
     await _systemTray!.initSystemTray(
@@ -116,6 +166,7 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
       MenuItemLabel(
         label: 'Start/Stop Dictation  ⌥Space',
         onClicked: (_) async {
+          if (!_permissions.allGranted) return;
           await _dictation.toggleRecording();
           if (mounted) setState(() {});
         },
@@ -123,7 +174,7 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
       MenuSeparator(),
       MenuItemLabel(
         label: 'Show/Hide Capsule  ⌥V',
-        onClicked: (_) => _toggleCapsuleVisibility(),
+        onClicked: (_) => _toggleCapsule(),
       ),
       MenuItemLabel(
         label: 'Settings...',
@@ -138,9 +189,9 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
     await _systemTray!.setContextMenu(menu);
 
     _systemTray!.registerSystemTrayEventHandler((eventName) {
-      if (eventName == kSystemTrayEventClick) {
-        _toggleCapsuleVisibility();
-      } else if (eventName == kSystemTrayEventRightClick) {
+      // Both click and right-click show the context menu
+      if (eventName == kSystemTrayEventClick ||
+          eventName == kSystemTrayEventRightClick) {
         _systemTray!.popUpContextMenu();
       }
     });
@@ -154,129 +205,236 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
       await file.writeAsBytes(data.buffer.asUint8List());
       return file.path;
     } catch (e) {
-      debugPrint('[VoiceInk] Tray icon extract error: $e');
+      debugPrint('[VoiceInk] Tray icon error: $e');
       return null;
     }
   }
 
+  // ───── Hotkeys ─────
+
   Future<void> _registerHotkeys() async {
-    // Option+Space: toggle dictation on/off
     _dictationHotKey = HotKey(
       key: PhysicalKeyboardKey.space,
       modifiers: [HotKeyModifier.alt],
       scope: HotKeyScope.system,
     );
-
     await hotKeyManager.register(
       _dictationHotKey!,
       keyDownHandler: (_) async {
-        if (_showSettings) return;
+        if (_mode == AppMode.settings || _mode == AppMode.permissions) return;
+        if (!_permissions.allGranted) return;
         await _dictation.toggleRecording();
         if (mounted) setState(() {});
-
-        // Show capsule when recording starts
         if (_dictation.state == DictationState.recording && !_capsuleVisible) {
-          _setCapsuleVisible(true);
+          _showCapsule();
         }
       },
     );
 
-    // Option+V: toggle capsule visibility
-    _toggleVisibilityHotKey = HotKey(
+    _toggleHotKey = HotKey(
       key: PhysicalKeyboardKey.keyV,
       modifiers: [HotKeyModifier.alt],
       scope: HotKeyScope.system,
     );
-
     await hotKeyManager.register(
-      _toggleVisibilityHotKey!,
-      keyDownHandler: (_) => _toggleCapsuleVisibility(),
+      _toggleHotKey!,
+      keyDownHandler: (_) => _toggleCapsule(),
     );
   }
 
-  void _toggleCapsuleVisibility() {
-    _setCapsuleVisible(!_capsuleVisible);
+  // ───── Visibility ─────
+
+  void _toggleCapsule() {
+    _capsuleVisible ? _hideCapsule() : _showCapsule();
   }
 
-  void _setCapsuleVisible(bool visible) {
-    _capsuleVisible = visible;
-    if (visible) {
-      windowManager.show();
-    } else {
-      windowManager.hide();
-    }
+  void _showCapsule() {
+    _capsuleVisible = true;
+    windowManager.show();
     if (mounted) setState(() {});
   }
 
-  void _openSettings() {
-    if (mounted) {
-      setState(() => _showSettings = true);
-    }
-    windowManager.setSize(const Size(480, 680));
-    windowManager.setMinimumSize(const Size(420, 500));
-    windowManager.setAlwaysOnTop(false);
-    windowManager.setHasShadow(true);
-    windowManager.setBackgroundColor(const Color(0xFF1a1a2e));
+  void _hideCapsule() {
+    _capsuleVisible = false;
+    windowManager.hide();
+    if (mounted) setState(() {});
+  }
+
+  // ───── Settings ─────
+
+  void _openSettings() async {
+    _mode = AppMode.settings;
+    if (mounted) setState(() {});
+    await windowManager.setMaximumSize(const Size(800, 900));
+    await windowManager.setMinimumSize(const Size(420, 500));
+    await windowManager.setSize(const Size(480, 680));
+    await windowManager.setAlwaysOnTop(false);
+    await windowManager.setHasShadow(true);
+    await windowManager.setBackgroundColor(const Color(0xFF1a1a2e));
     if (!_capsuleVisible) {
       _capsuleVisible = true;
-      windowManager.show();
+      await windowManager.show();
     }
-    windowManager.focus();
+    await windowManager.focus();
   }
 
   void _closeSettings() {
-    if (mounted) {
-      setState(() => _showSettings = false);
-    }
-    windowManager.setSize(const Size(200, 50));
-    windowManager.setMinimumSize(const Size(160, 44));
-    windowManager.setAlwaysOnTop(true);
-    windowManager.setHasShadow(false);
-    windowManager.setBackgroundColor(Colors.transparent);
+    _mode = AppMode.capsule;
+    if (mounted) setState(() {});
+    _setupCapsuleWindow();
+  }
+
+  // ───── Window listener ─────
+
+  @override
+  void onWindowClose() async {
+    // Hide instead of closing — app stays alive in tray
+    _hideCapsule();
   }
 
   @override
   void dispose() {
     windowManager.removeListener(this);
+    _permPoll?.cancel();
     if (_dictationHotKey != null) hotKeyManager.unregister(_dictationHotKey!);
-    if (_toggleVisibilityHotKey != null) hotKeyManager.unregister(_toggleVisibilityHotKey!);
+    if (_toggleHotKey != null) hotKeyManager.unregister(_toggleHotKey!);
+    _permissions.dispose();
     _dictation.dispose();
     super.dispose();
   }
 
+  // ───── Build ─────
+
   @override
   Widget build(BuildContext context) {
-    if (!_initialized) {
-      return const SizedBox.shrink();
+    switch (_mode) {
+      case AppMode.loading:
+        return const SizedBox.shrink();
+      case AppMode.permissions:
+        return _buildPermissions();
+      case AppMode.capsule:
+        return _buildCapsule();
+      case AppMode.settings:
+        return _buildSettings();
     }
+  }
 
-    if (_showSettings) {
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData.dark(),
-        home: Scaffold(
-          backgroundColor: const Color(0xFF1a1a2e),
-          body: Stack(
+  Widget _buildPermissions() {
+    return Scaffold(
+      backgroundColor: const Color(0xFF1a1a2e),
+      body: GestureDetector(
+        onPanStart: (_) => windowManager.startDragging(),
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SettingsScreen(
-                modelManager: _modelManager,
-                dictationService: _dictation,
+              const Text('VoiceInk',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              Text('Grant permissions to get started',
+                  style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                      fontSize: 13)),
+              const SizedBox(height: 32),
+              _permTile(
+                icon: Icons.mic,
+                title: 'Microphone',
+                subtitle: 'Required for voice capture',
+                granted: _permissions.micGranted,
+                buttonLabel: 'Grant',
+                onTap: () async {
+                  await _permissions.checkMicrophone();
+                  if (mounted) setState(() {});
+                },
               ),
-              Positioned(
-                top: 8,
-                right: 8,
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white70),
-                  onPressed: _closeSettings,
+              const SizedBox(height: 16),
+              _permTile(
+                icon: Icons.accessibility_new,
+                title: 'Accessibility',
+                subtitle: 'Required for typing text into apps',
+                granted: _permissions.accessibilityGranted,
+                buttonLabel: 'Open Settings',
+                onTap: () => _permissions.openAccessibilitySettings(),
+              ),
+              const Spacer(),
+              Center(
+                child: TextButton.icon(
+                  onPressed: _recheckPerms,
+                  icon: const Icon(Icons.refresh, size: 16),
+                  label: const Text('Check Again'),
                 ),
               ),
             ],
           ),
         ),
-      );
-    }
+      ),
+    );
+  }
 
-    // Pure transparent capsule
+  Widget _permTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool granted,
+    required String buttonLabel,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: granted
+              ? Colors.green.withValues(alpha: 0.3)
+              : Colors.orange.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(granted ? Icons.check_circle : icon,
+              color: granted ? Colors.green : Colors.orange, size: 28),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500)),
+                const SizedBox(height: 2),
+                Text(subtitle,
+                    style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.5),
+                        fontSize: 12)),
+              ],
+            ),
+          ),
+          if (!granted)
+            ElevatedButton(
+              onPressed: onTap,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF3B82F6),
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+              child: Text(buttonLabel, style: const TextStyle(fontSize: 13)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCapsule() {
     return ListenableBuilder(
       listenable: _dictation,
       builder: (context, _) {
@@ -286,7 +444,7 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
           child: Container(
             color: Colors.transparent,
             child: Center(
-              child: _buildCapsuleContent(),
+              child: FloatingIndicator(state: _dictation.state),
             ),
           ),
         );
@@ -294,50 +452,21 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
     );
   }
 
-  Widget _buildCapsuleContent() {
-    // When idle with no messages, show minimal dot
-    if (_dictation.state == DictationState.idle &&
-        _dictation.errorMessage == null) {
-      return _idleCapsule();
-    }
-
-    return FloatingIndicator(
-      state: _dictation.state,
-      lastText: _dictation.lastTranscription,
-      error: _dictation.errorMessage,
-      onCancel: () async {
-        await _dictation.cancelRecording();
-        if (mounted) setState(() {});
-      },
-    );
-  }
-
-  Widget _idleCapsule() {
-    final hasModel = _modelManager.downloadedModels.isNotEmpty;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+  Widget _buildSettings() {
+    return Scaffold(
+      backgroundColor: const Color(0xFF1a1a2e),
+      body: Stack(
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: hasModel ? Colors.green : Colors.orange,
-              shape: BoxShape.circle,
-            ),
+          SettingsScreen(
+            modelManager: _modelManager,
+            dictationService: _dictation,
           ),
-          const SizedBox(width: 8),
-          Text(
-            hasModel ? '⌥Space to dictate' : 'Double-click for setup',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.7),
-              fontSize: 11,
-              fontWeight: FontWeight.w400,
+          Positioned(
+            top: 8,
+            right: 8,
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white70),
+              onPressed: _closeSettings,
             ),
           ),
         ],
