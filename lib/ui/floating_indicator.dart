@@ -2,7 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import '../services/dictation_service.dart';
 
-/// Floating pill overlay that shows recording/processing state
+/// Minimal transparent floating capsule showing recording state
 class FloatingIndicator extends StatefulWidget {
   final DictationState state;
   final String? lastText;
@@ -44,29 +44,32 @@ class _FloatingIndicatorState extends State<FloatingIndicator>
   Widget build(BuildContext context) {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 200),
-      child: _buildIndicator(),
+      child: _buildContent(),
     );
   }
 
-  Widget _buildIndicator() {
+  Widget _buildContent() {
     switch (widget.state) {
       case DictationState.idle:
         if (widget.error != null) {
-          return _buildPill(
+          return _capsule(
             key: const ValueKey('error'),
-            color: Colors.red.shade700,
-            icon: Icons.error_outline,
-            text: widget.error!,
-            showClose: true,
-          );
-        }
-        if (widget.lastText != null && widget.lastText!.isNotEmpty) {
-          return _buildPill(
-            key: const ValueKey('done'),
-            color: Colors.green.shade700,
-            icon: Icons.check_circle_outline,
-            text: _truncate(widget.lastText!, 50),
-            showClose: false,
+            color: Colors.red.withValues(alpha: 0.85),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white, size: 14),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    widget.error!,
+                    style: const TextStyle(color: Colors.white, fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           );
         }
         return const SizedBox.shrink(key: ValueKey('hidden'));
@@ -75,136 +78,117 @@ class _FloatingIndicatorState extends State<FloatingIndicator>
         return AnimatedBuilder(
           animation: _pulseController,
           builder: (context, child) {
-            return _buildPill(
+            return _capsule(
               key: const ValueKey('recording'),
               color: Color.lerp(
-                Colors.red.shade600,
-                Colors.red.shade900,
+                Colors.red.withValues(alpha: 0.75),
+                Colors.red.withValues(alpha: 0.95),
                 _pulseController.value,
               )!,
-              icon: Icons.mic,
-              text: 'Listening...',
-              showClose: true,
-              showWaveform: true,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _WaveformBars(animation: _pulseController),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Listening',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
+              ),
             );
           },
         );
 
       case DictationState.processing:
-        return _buildPill(
+        return _capsule(
           key: const ValueKey('processing'),
-          color: Colors.blue.shade700,
-          icon: Icons.hourglass_top,
-          text: 'Transcribing...',
-          showClose: false,
-          showSpinner: true,
+          color: Colors.blue.withValues(alpha: 0.85),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  color: Colors.white,
+                ),
+              ),
+              SizedBox(width: 8),
+              Text(
+                'Finishing...',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
         );
     }
   }
 
-  Widget _buildPill({
+  Widget _capsule({
     required Key key,
     required Color color,
-    required IconData icon,
-    required String text,
-    bool showClose = false,
-    bool showWaveform = false,
-    bool showSpinner = false,
+    required Widget child,
   }) {
     return Container(
       key: key,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: color.withValues(alpha: 0.4),
-            blurRadius: 12,
-            spreadRadius: 2,
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (showSpinner)
-            const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            )
-          else
-            Icon(icon, color: Colors.white, size: 18),
-          const SizedBox(width: 8),
-          if (showWaveform) ...[
-            _WaveformWidget(animation: _pulseController),
-            const SizedBox(width: 8),
-          ],
-          Flexible(
-            child: Text(
-              text,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          if (showClose) ...[
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: widget.onCancel,
-              child: const Icon(
-                Icons.close,
-                color: Colors.white70,
-                size: 16,
-              ),
-            ),
-          ],
-        ],
-      ),
+      child: child,
     );
-  }
-
-  String _truncate(String text, int maxLen) {
-    if (text.length <= maxLen) return text;
-    return '${text.substring(0, maxLen)}...';
   }
 }
 
-class _WaveformWidget extends StatelessWidget {
+class _WaveformBars extends StatelessWidget {
   final Animation<double> animation;
-  const _WaveformWidget({required this.animation});
+  const _WaveformBars({required this.animation});
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: animation,
-      builder: (context, child) {
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(5, (i) {
-            final height = 6.0 +
-                10.0 *
-                    sin((animation.value * 3.14159) + (i * 0.8)).abs();
-            return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 1),
-              width: 3,
-              height: height,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.8),
-                borderRadius: BorderRadius.circular(1.5),
-              ),
-            );
-          }),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: List.generate(4, (i) {
+        final h = 4.0 + 8.0 * sin((animation.value * 3.14159) + (i * 1.0)).abs();
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 1),
+          width: 2.5,
+          height: h,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.9),
+            borderRadius: BorderRadius.circular(1.5),
+          ),
         );
-      },
+      }),
     );
   }
 }

@@ -10,7 +10,8 @@ import 'model_manager.dart';
 
 enum DictationState { idle, recording, processing }
 
-/// Main orchestrator that ties audio → transcription → text injection together
+/// Streaming dictation: records in chunks, transcribes each, injects text live.
+/// Toggle mode: press hotkey once to start, again to stop.
 class DictationService extends ChangeNotifier {
   final AudioCaptureService _audio = AudioCaptureService();
   final TextCleanupService _cleanup = TextCleanupService();
@@ -21,6 +22,11 @@ class DictationService extends ChangeNotifier {
   DictationState _state = DictationState.idle;
   String _lastTranscription = '';
   String? _errorMessage;
+  Timer? _chunkTimer;
+  bool _transcribing = false;
+
+  // Streaming config
+  static const _chunkDuration = Duration(seconds: 3);
 
   DictationState get state => _state;
   String get lastTranscription => _lastTranscription;
@@ -33,13 +39,14 @@ class DictationService extends ChangeNotifier {
   Future<void> init() async {
     await _audio.init();
 
-    // Resolve whisper binary path
     final whisperPath = await _resolveWhisperPath();
     if (whisperPath != null) {
       _whisper = WhisperService(whisperPath);
+      debugPrint('[VoiceInk] Whisper binary found at: $whisperPath');
+    } else {
+      debugPrint('[VoiceInk] WARNING: whisper-cli not found!');
     }
 
-    // Load preferences
     final prefs = await SharedPreferences.getInstance();
     _cleanup.removeFillers = prefs.getBool('cleanup_fillers') ?? true;
     _cleanup.convertPunctuation = prefs.getBool('cleanup_punctuation') ?? true;
@@ -52,37 +59,27 @@ class DictationService extends ChangeNotifier {
   }
 
   Future<String?> _resolveWhisperPath() async {
-    // Check bundled whisper-cli in app resources
     final execPath = Platform.resolvedExecutable;
     final appDir = File(execPath).parent.path;
 
-    // For development: check in native/whisper.cpp/build/bin/
-    final devPaths = [
+    final candidates = [
       '$appDir/../Resources/whisper-cli',
       '$appDir/whisper-cli',
+      '/Users/baljeet/FlutterWorkspace/voice_ink/native/whisper.cpp/build/bin/whisper-cli',
     ];
 
-    // Also check the development build path
+    // Also check current working directory
     final cwd = Directory.current.path;
-    devPaths.add('$cwd/native/whisper.cpp/build/bin/whisper-cli');
+    candidates.add('$cwd/native/whisper.cpp/build/bin/whisper-cli');
 
-    // Hardcoded dev path as fallback
-    devPaths.add(
-      '/Users/baljeet/FlutterWorkspace/voice_ink/native/whisper.cpp/build/bin/whisper-cli',
-    );
-
-    for (final path in devPaths) {
-      if (await File(path).exists()) {
-        return path;
-      }
+    for (final path in candidates) {
+      if (await File(path).exists()) return path;
     }
 
     // Check PATH
     try {
       final result = await Process.run('which', ['whisper-cli']);
-      if (result.exitCode == 0) {
-        return (result.stdout as String).trim();
-      }
+      if (result.exitCode == 0) return (result.stdout as String).trim();
     } catch (_) {}
 
     return null;
@@ -92,10 +89,17 @@ class DictationService extends ChangeNotifier {
     return await _audio.hasPermission();
   }
 
-  /// Start recording audio
-  Future<void> startRecording() async {
-    if (_state != DictationState.idle) return;
+  /// Toggle recording on/off. This is the main entry point.
+  Future<void> toggleRecording() async {
+    if (_state == DictationState.idle) {
+      await _startStreaming();
+    } else if (_state == DictationState.recording) {
+      await _stopStreaming();
+    }
+    // If processing, ignore (it'll finish soon)
+  }
 
+  Future<void> _startStreaming() async {
     _errorMessage = null;
 
     if (_whisper == null) {
@@ -105,7 +109,7 @@ class DictationService extends ChangeNotifier {
     }
 
     if (modelManager.selectedModelPath == null) {
-      _errorMessage = 'No model selected. Download a model in Settings.';
+      _errorMessage = 'No model selected. Download one in Settings.';
       notifyListeners();
       return;
     }
@@ -113,65 +117,102 @@ class DictationService extends ChangeNotifier {
     try {
       await _audio.startRecording();
       _state = DictationState.recording;
+      _lastTranscription = '';
       notifyListeners();
+
+      // Start chunk timer — every N seconds, harvest audio and transcribe
+      _chunkTimer = Timer.periodic(_chunkDuration, (_) => _harvestChunk());
     } catch (e) {
-      _errorMessage = 'Failed to start recording: $e';
+      _errorMessage = 'Mic error: $e';
+      _state = DictationState.idle;
       notifyListeners();
     }
   }
 
-  /// Stop recording and process audio
-  Future<void> stopRecordingAndTranscribe() async {
+  /// Harvest current chunk: stop recording, transcribe, start new recording
+  Future<void> _harvestChunk() async {
     if (_state != DictationState.recording) return;
+    if (_transcribing) return; // don't overlap
 
+    _transcribing = true;
+    try {
+      // Stop current recording
+      final audioPath = await _audio.stopRecording();
+      
+      // Immediately start a new recording for the next chunk
+      if (_state == DictationState.recording) {
+        await _audio.startRecording();
+      }
+
+      // Transcribe the completed chunk in the background
+      if (audioPath != null && await File(audioPath).exists()) {
+        final fileSize = await File(audioPath).length();
+        if (fileSize > 1000) { // skip tiny files (silence)
+          final rawText = await _whisper!.transcribe(
+            audioPath: audioPath,
+            modelPath: modelManager.selectedModelPath!,
+          );
+
+          final cleaned = _cleanup.process(rawText);
+          if (cleaned.isNotEmpty) {
+            _lastTranscription += ((_lastTranscription.isNotEmpty) ? ' ' : '') + cleaned;
+            notifyListeners();
+            await _injection.injectText('$cleaned ');
+          }
+        }
+        // Clean up chunk file
+        try { await File(audioPath).delete(); } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('[VoiceInk] Chunk transcription error: $e');
+    } finally {
+      _transcribing = false;
+    }
+  }
+
+  Future<void> _stopStreaming() async {
+    _chunkTimer?.cancel();
+    _chunkTimer = null;
+
+    // Process final chunk
     _state = DictationState.processing;
     notifyListeners();
 
     try {
       final audioPath = await _audio.stopRecording();
-      if (audioPath == null) {
-        _state = DictationState.idle;
-        _errorMessage = 'No audio recorded';
-        notifyListeners();
-        return;
+      if (audioPath != null && await File(audioPath).exists()) {
+        final fileSize = await File(audioPath).length();
+        if (fileSize > 1000) {
+          final rawText = await _whisper!.transcribe(
+            audioPath: audioPath,
+            modelPath: modelManager.selectedModelPath!,
+          );
+          final cleaned = _cleanup.process(rawText);
+          if (cleaned.isNotEmpty) {
+            _lastTranscription += ((_lastTranscription.isNotEmpty) ? ' ' : '') + cleaned;
+            await _injection.injectText('$cleaned ');
+          }
+        }
+        try { await File(audioPath).delete(); } catch (_) {}
       }
-
-      // Transcribe
-      final rawText = await _whisper!.transcribe(
-        audioPath: audioPath,
-        modelPath: modelManager.selectedModelPath!,
-      );
-
-      // Clean up text
-      final cleanedText = _cleanup.process(rawText);
-      _lastTranscription = cleanedText;
-
-      if (cleanedText.isNotEmpty) {
-        // Inject text at cursor
-        await _injection.injectText(cleanedText);
-      }
-
-      _state = DictationState.idle;
-      notifyListeners();
-
-      // Clean up temp file
-      try {
-        await File(audioPath).delete();
-      } catch (_) {}
     } catch (e) {
-      _state = DictationState.idle;
-      _errorMessage = 'Transcription failed: $e';
-      notifyListeners();
+      debugPrint('[VoiceInk] Final chunk error: $e');
     }
+
+    _state = DictationState.idle;
+    notifyListeners();
+
+    await _audio.cleanup();
   }
 
-  /// Cancel current recording
   Future<void> cancelRecording() async {
-    if (_state == DictationState.recording) {
-      await _audio.cancelRecording();
-      _state = DictationState.idle;
-      notifyListeners();
-    }
+    _chunkTimer?.cancel();
+    _chunkTimer = null;
+    await _audio.cancelRecording();
+    _state = DictationState.idle;
+    _lastTranscription = '';
+    notifyListeners();
+    await _audio.cleanup();
   }
 
   Future<void> savePreferences() async {
@@ -188,6 +229,7 @@ class DictationService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _chunkTimer?.cancel();
     _audio.dispose();
     super.dispose();
   }

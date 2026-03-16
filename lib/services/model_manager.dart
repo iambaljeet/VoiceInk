@@ -40,21 +40,33 @@ class ModelManager extends ChangeNotifier {
 
   Future<void> _scanDownloadedModels() async {
     _downloadedModels.clear();
-    final dir = Directory(_modelsDir!);
-    if (!await dir.exists()) return;
 
-    await for (final entity in dir.list()) {
-      if (entity is File && entity.path.endsWith('.bin')) {
-        final name = entity.path.split('/').last;
-        // Extract model id from filename: ggml-{id}.bin
-        if (name.startsWith('ggml-') && name.endsWith('.bin')) {
-          final id = name.substring(5, name.length - 4);
-          _downloadedModels.add(id);
+    // Also check sandboxed container path (from previous installs)
+    final containerPath = '${Platform.environment['HOME']}/Library/Containers/com.voiceink.voiceInk/Data/Library/Application Support/com.voiceink.voiceInk/models';
+    for (final dirPath in [_modelsDir!, containerPath]) {
+      final dir = Directory(dirPath);
+      if (!await dir.exists()) continue;
+
+      await for (final entity in dir.list()) {
+        if (entity is File && entity.path.endsWith('.bin')) {
+          final name = entity.path.split('/').last;
+          if (name.startsWith('ggml-') && name.endsWith('.bin')) {
+            final id = name.substring(5, name.length - 4);
+            if (!_downloadedModels.contains(id)) {
+              // Copy from container to non-sandboxed location if needed
+              if (dirPath != _modelsDir) {
+                final destPath = '$_modelsDir/$name';
+                if (!await File(destPath).exists()) {
+                  await entity.copy(destPath);
+                }
+              }
+              _downloadedModels.add(id);
+            }
+          }
         }
       }
     }
 
-    // Auto-select first available model if none selected
     if (_selectedModelId == null && _downloadedModels.isNotEmpty) {
       _selectedModelId = _downloadedModels.first;
     }

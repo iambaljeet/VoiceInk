@@ -12,43 +12,57 @@ class WhisperService {
     required String modelPath,
     String language = 'en',
     bool translate = false,
+    int? threads,
   }) async {
-    final args = [
+    final args = <String>[
       '-m', modelPath,
       '-f', audioPath,
       '--no-timestamps',
-      '-nt', // no timestamps text
       '-l', language,
-      '--print-special', 'false',
+      '-t', '${threads ?? 4}',
+      '--no-prints',
     ];
 
     if (translate) {
       args.add('--translate');
     }
 
-    final result = await Process.run(_whisperBinaryPath, args);
+    final result = await Process.run(
+      _whisperBinaryPath,
+      args,
+      environment: {'GGML_METAL_PATH_RESOURCES': File(_whisperBinaryPath).parent.path},
+    ).timeout(
+      const Duration(seconds: 30),
+      onTimeout: () => ProcessResult(-1, -1, '', 'Transcription timed out'),
+    );
 
     if (result.exitCode != 0) {
-      throw Exception(
-        'Whisper transcription failed: ${result.stderr}',
-      );
+      final stderr = result.stderr as String;
+      // If it just has Metal/ggml warnings but produced output, that's ok
+      final stdout = result.stdout as String;
+      if (stdout.trim().isNotEmpty) {
+        return _cleanOutput(stdout);
+      }
+      throw Exception('Whisper failed (exit ${result.exitCode}): $stderr');
     }
 
-    // Parse output - whisper prints the text to stdout
-    // Filter out log lines (those starting with whisper_, ggml_, metal_, main:, system_info)
-    final lines = (result.stdout as String).split('\n');
+    return _cleanOutput(result.stdout as String);
+  }
+
+  String _cleanOutput(String raw) {
+    final lines = raw.split('\n');
     final textLines = lines.where((line) {
-      final trimmed = line.trim();
-      if (trimmed.isEmpty) return false;
-      if (trimmed.startsWith('whisper_')) return false;
-      if (trimmed.startsWith('ggml_')) return false;
-      if (trimmed.startsWith('metal_')) return false;
-      if (trimmed.startsWith('main:')) return false;
-      if (trimmed.startsWith('system_info:')) return false;
-      if (trimmed.startsWith('output_')) return false;
+      final t = line.trim();
+      if (t.isEmpty) return false;
+      if (t.startsWith('whisper_')) return false;
+      if (t.startsWith('ggml_')) return false;
+      if (t.startsWith('metal_')) return false;
+      if (t.startsWith('main:')) return false;
+      if (t.startsWith('system_info:')) return false;
+      if (t.startsWith('output_')) return false;
+      if (t.startsWith('[')) return false; // timestamp lines
       return true;
     }).toList();
-
     return textLines.join(' ').trim();
   }
 }
