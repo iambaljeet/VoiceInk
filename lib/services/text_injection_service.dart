@@ -1,14 +1,32 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 
 /// Injects transcribed text at the cursor position in any app.
-/// Approach: save clipboard → set text → simulate Cmd+V → restore clipboard
+/// Desktop: save clipboard → set text → simulate paste → restore clipboard
+/// Android: uses native AccessibilityService to set text in focused field,
+///          falls back to clipboard if service not available.
 class TextInjectionService {
+  static const _channel = MethodChannel('com.voiceink/text_injection');
+
   /// Inject text at current cursor position
   Future<void> injectText(String text) async {
     if (text.isEmpty) return;
 
-    // Save current clipboard
+    if (Platform.isAndroid || Platform.isIOS) {
+      // Try native text injection first
+      try {
+        final success = await _channel.invokeMethod<bool>('injectText', {'text': text});
+        if (success == true) return;
+      } catch (e) {
+        debugPrint('[TextInjection] Native injection failed: $e');
+      }
+      // Fallback: copy to clipboard
+      await Clipboard.setData(ClipboardData(text: text));
+      return;
+    }
+
+    // Desktop: save clipboard → set text → simulate paste → restore
     final previousClipboard = await _getClipboard();
 
     // Set new text to clipboard

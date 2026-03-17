@@ -30,6 +30,8 @@
 	<string>NSApplication</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>VoiceInk needs microphone access to transcribe your speech into text.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>VoiceInk uses on-device speech recognition for real-time voice-to-text dictation.</string>
 	<key>LSUIElement</key>
 	<true/>
 </dict>

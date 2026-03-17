@@ -36,7 +36,7 @@ class WhisperModel {
       id: 'tiny',
       name: 'Tiny (Multilingual)',
       description: 'Fastest multilingual model.',
-      sizeBytes: 77704715,
+      sizeBytes: 77691713,
       downloadUrl: '$_baseUrl/ggml-tiny.bin',
     ),
     WhisperModel(
@@ -50,14 +50,14 @@ class WhisperModel {
       id: 'base',
       name: 'Base (Multilingual)',
       description: 'Good balance for multiple languages.',
-      sizeBytes: 147964211,
+      sizeBytes: 147951465,
       downloadUrl: '$_baseUrl/ggml-base.bin',
     ),
     WhisperModel(
       id: 'small.en',
       name: 'Small (English)',
       description: 'More accurate, slightly slower.',
-      sizeBytes: 487601967,
+      sizeBytes: 487614201,
       downloadUrl: '$_baseUrl/ggml-small.en.bin',
     ),
     WhisperModel(
@@ -78,14 +78,14 @@ class WhisperModel {
       id: 'medium',
       name: 'Medium (Multilingual)',
       description: 'High accuracy multilingual.',
-      sizeBytes: 1533774781,
+      sizeBytes: 1533763059,
       downloadUrl: '$_baseUrl/ggml-medium.bin',
     ),
     WhisperModel(
       id: 'large-v3-turbo',
       name: 'Large V3 Turbo',
       description: 'Best quality with optimized speed.',
-      sizeBytes: 1621098625,
+      sizeBytes: 1624555275,
       downloadUrl: '$_baseUrl/ggml-large-v3-turbo.bin',
     ),
   ];

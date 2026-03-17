@@ -8,22 +8,30 @@ class MainFlutterWindow: NSWindow {
     self.contentViewController = flutterViewController
     self.setFrame(windowFrame, display: true)
 
-    // Transparent window for floating capsule
+    // Fully transparent, borderless floating window
+    self.styleMask = [.borderless]
     self.isOpaque = false
     self.backgroundColor = NSColor.clear
     self.hasShadow = false
+    self.titlebarAppearsTransparent = true
+    self.titleVisibility = .hidden
     self.level = .floating
-    self.styleMask.insert(.borderless)
     self.isMovableByWindowBackground = true
     self.collectionBehavior = [.canJoinAllSpaces, .stationary]
 
-    // Ensure Flutter's rendering layer is also transparent
-    flutterViewController.view.wantsLayer = true
-    flutterViewController.view.layer?.isOpaque = false
-    flutterViewController.view.layer?.backgroundColor = CGColor.clear
+    // Since Flutter 3.7.0 FlutterViewController defaults to a black background.
+    // Setting it to clear is the actual fix for the opaque FlutterView layer.
+    flutterViewController.backgroundColor = .clear
 
     RegisterGeneratedPlugins(registry: flutterViewController)
-
     super.awakeFromNib()
+  }
+
+  // Re-enforce transparency after any programmatic style change
+  override var styleMask: NSWindow.StyleMask {
+    didSet {
+      self.isOpaque = false
+      self.backgroundColor = NSColor.clear
+    }
   }
 }

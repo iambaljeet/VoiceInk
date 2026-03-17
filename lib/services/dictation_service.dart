@@ -39,12 +39,19 @@ class DictationService extends ChangeNotifier {
   Future<void> init() async {
     await _audio.init();
 
-    final whisperPath = await _resolveWhisperPath();
-    if (whisperPath != null) {
-      _whisper = WhisperService(whisperPath);
-      debugPrint('[VoiceInk] Whisper binary found at: $whisperPath');
+    if (Platform.isAndroid || Platform.isIOS) {
+      // Mobile: use FFI-based whisper (no CLI binary needed)
+      _whisper = WhisperService();
+      debugPrint('[VoiceInk] Whisper FFI mode (mobile)');
     } else {
-      debugPrint('[VoiceInk] WARNING: whisper-cli not found!');
+      // Desktop: use whisper CLI binary
+      final whisperPath = await _resolveWhisperPath();
+      if (whisperPath != null) {
+        _whisper = WhisperService(whisperPath);
+        debugPrint('[VoiceInk] Whisper binary found at: $whisperPath');
+      } else {
+        debugPrint('[VoiceInk] WARNING: whisper-cli not found!');
+      }
     }
 
     final prefs = await SharedPreferences.getInstance();
@@ -62,16 +69,16 @@ class DictationService extends ChangeNotifier {
   Future<String?> _resolveWhisperPath() async {
     final execPath = Platform.resolvedExecutable;
     final appDir = File(execPath).parent.path;
+    final ext = Platform.isWindows ? '.exe' : '';
 
     final candidates = [
-      '$appDir/../Resources/whisper-cli',
-      '$appDir/whisper-cli',
-      '/Users/baljeet/FlutterWorkspace/voice_ink/native/whisper.cpp/build/bin/whisper-cli',
+      '$appDir/../Resources/whisper-cli$ext',
+      '$appDir/whisper-cli$ext',
+      '/Users/baljeet/FlutterWorkspace/voice_ink/native/whisper.cpp/build/bin/whisper-cli$ext',
     ];
 
-    // Also check current working directory
     final cwd = Directory.current.path;
-    candidates.add('$cwd/native/whisper.cpp/build/bin/whisper-cli');
+    candidates.add('$cwd/native/whisper.cpp/build/bin/whisper-cli$ext');
 
     for (final path in candidates) {
       if (await File(path).exists()) return path;
@@ -98,6 +105,16 @@ class DictationService extends ChangeNotifier {
       await _stopStreaming();
     }
     // If processing, ignore (it'll finish soon)
+  }
+
+  /// Start recording (for push-to-talk).
+  Future<void> startRecording() async {
+    if (_state == DictationState.idle) await _startStreaming();
+  }
+
+  /// Stop recording (for push-to-talk).
+  Future<void> stopRecording() async {
+    if (_state == DictationState.recording) await _stopStreaming();
   }
 
   Future<void> _startStreaming() async {
@@ -149,16 +166,20 @@ class DictationService extends ChangeNotifier {
       if (audioPath != null && await File(audioPath).exists()) {
         final fileSize = await File(audioPath).length();
         if (fileSize > 1000) { // skip tiny files (silence)
-          final rawText = await _whisper!.transcribe(
-            audioPath: audioPath,
-            modelPath: modelManager.selectedModelPath!,
-          );
+          try {
+            final rawText = await _whisper!.transcribe(
+              audioPath: audioPath,
+              modelPath: modelManager.selectedModelPath!,
+            );
 
-          final cleaned = _cleanup.process(rawText);
-          if (cleaned.isNotEmpty) {
-            _lastTranscription += ((_lastTranscription.isNotEmpty) ? ' ' : '') + cleaned;
-            notifyListeners();
-            await _injection.injectText('$cleaned ');
+            final cleaned = _cleanup.process(rawText);
+            if (cleaned.isNotEmpty) {
+              _lastTranscription += ((_lastTranscription.isNotEmpty) ? ' ' : '') + cleaned;
+              notifyListeners();
+              await _injection.injectText('$cleaned ');
+            }
+          } catch (e) {
+            debugPrint('[VoiceInk] Whisper transcription error: $e');
           }
         }
         // Clean up chunk file

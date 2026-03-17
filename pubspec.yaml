@@ -41,6 +41,10 @@ dependencies:
   shared_preferences: ^2.5.4
   record: ^6.2.0
   system_tray: ^2.0.3
+  whisper_flutter_new:
+    path: packages/whisper_flutter_new
+  path: ^1.9.1
+  speech_to_text: ^7.3.0
 
 dev_dependencies:
   flutter_test:
