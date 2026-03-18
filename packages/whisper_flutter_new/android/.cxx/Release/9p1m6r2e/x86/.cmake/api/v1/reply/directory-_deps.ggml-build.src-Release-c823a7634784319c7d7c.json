@@ -1,0 +1,60 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"ggml_add_backend_library",
+			"ggml_add_cpu_backend_variant_impl"
+		],
+		"files" : 
+		[
+			"/Users/baljeet/FlutterWorkspace/voice_ink/native/whisper.cpp/ggml/src/CMakeLists.txt",
+			"/Users/baljeet/FlutterWorkspace/voice_ink/native/whisper.cpp/ggml/src/ggml-cpu/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 445,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 27,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 262,
+				"parent" : 2
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "Unspecified",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"/Users/baljeet/FlutterWorkspace/voice_ink/build/whisper_flutter_new/intermediates/cxx/Release/9p1m6r2e/obj/x86/libggml-cpu.so"
+			],
+			"targetId" : "ggml-cpu::@13ca10ed1afff475bcb7",
+			"targetIndex" : 2,
+			"type" : "target"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "_deps/ggml-build/src",
+		"source" : "/Users/baljeet/FlutterWorkspace/voice_ink/native/whisper.cpp/ggml/src"
+	}
+}

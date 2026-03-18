@@ -3,8 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:whisper_flutter_new/whisper_flutter_new.dart' as wffi;
 
 /// Cross-platform whisper transcription.
-/// Desktop: uses whisper-cli subprocess.
-/// Android/iOS: uses whisper_flutter_new FFI bindings.
+/// Desktop (macOS/Windows): uses whisper-cli subprocess.
 class WhisperService {
   final String? cliPath;
 
@@ -21,9 +20,6 @@ class WhisperService {
     String language = 'en',
     int threads = 4,
   }) async {
-    if (Platform.isAndroid || Platform.isIOS) {
-      return _transcribeFFI(audioPath, modelPath, threads);
-    }
     if (cliPath == null) throw Exception('Whisper CLI path not set');
     return _transcribeCLI(audioPath, modelPath, language, threads);
   }

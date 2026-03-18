@@ -1,0 +1,21 @@
+# ninja log v5
+0	57	1773667492519928475	ggml-populate-prefix/src/ggml-populate-stamp/ggml-populate-mkdir	e7d4ff5eee899002
+0	57	1773667492519928475	/Users/baljeet/FlutterWorkspace/voice_ink/packages/whisper_flutter_new/android/.cxx/Release/9p1m6r2e/x86/_deps/ggml-subbuild/ggml-populate-prefix/src/ggml-populate-stamp/ggml-populate-mkdir	e7d4ff5eee899002
+58	76	1773667492538285597	ggml-populate-prefix/src/ggml-populate-stamp/ggml-populate-download	349bf21de273b4ca
+58	76	1773667492538285597	/Users/baljeet/FlutterWorkspace/voice_ink/packages/whisper_flutter_new/android/.cxx/Release/9p1m6r2e/x86/_deps/ggml-subbuild/ggml-populate-prefix/src/ggml-populate-stamp/ggml-populate-download	349bf21de273b4ca
+76	93	1773667492555324294	ggml-populate-prefix/src/ggml-populate-stamp/ggml-populate-update	a6638d749efff58c
+76	93	1773667492555324294	/Users/baljeet/FlutterWorkspace/voice_ink/packages/whisper_flutter_new/android/.cxx/Release/9p1m6r2e/x86/_deps/ggml-subbuild/ggml-populate-prefix/src/ggml-populate-stamp/ggml-populate-update	a6638d749efff58c
+93	114	1773667492576494436	ggml-populate-prefix/src/ggml-populate-stamp/ggml-populate-patch	1e226952c56c634a
+93	114	1773667492576494436	/Users/baljeet/FlutterWorkspace/voice_ink/packages/whisper_flutter_new/android/.cxx/Release/9p1m6r2e/x86/_deps/ggml-subbuild/ggml-populate-prefix/src/ggml-populate-stamp/ggml-populate-patch	1e226952c56c634a
+114	131	1773667492594138304	ggml-populate-prefix/src/ggml-populate-stamp/ggml-populate-configure	20c6032eed275b24
+114	131	1773667492594138304	/Users/baljeet/FlutterWorkspace/voice_ink/packages/whisper_flutter_new/android/.cxx/Release/9p1m6r2e/x86/_deps/ggml-subbuild/ggml-populate-prefix/src/ggml-populate-stamp/ggml-populate-configure	20c6032eed275b24
+132	149	1773667492611263959	ggml-populate-prefix/src/ggml-populate-stamp/ggml-populate-build	bf5be610f58505f5
+132	149	1773667492611263959	/Users/baljeet/FlutterWorkspace/voice_ink/packages/whisper_flutter_new/android/.cxx/Release/9p1m6r2e/x86/_deps/ggml-subbuild/ggml-populate-prefix/src/ggml-populate-stamp/ggml-populate-build	bf5be610f58505f5
+149	166	1773667492628622325	ggml-populate-prefix/src/ggml-populate-stamp/ggml-populate-install	d71b0f4f9bb5a7e4
+149	166	1773667492628622325	/Users/baljeet/FlutterWorkspace/voice_ink/packages/whisper_flutter_new/android/.cxx/Release/9p1m6r2e/x86/_deps/ggml-subbuild/ggml-populate-prefix/src/ggml-populate-stamp/ggml-populate-install	d71b0f4f9bb5a7e4
+166	182	1773667492645074227	ggml-populate-prefix/src/ggml-populate-stamp/ggml-populate-test	38973f2d3b1aeb87
+166	182	1773667492645074227	/Users/baljeet/FlutterWorkspace/voice_ink/packages/whisper_flutter_new/android/.cxx/Release/9p1m6r2e/x86/_deps/ggml-subbuild/ggml-populate-prefix/src/ggml-populate-stamp/ggml-populate-test	38973f2d3b1aeb87
+182	206	1773667492669001053	CMakeFiles/ggml-populate-complete	f707700c1a00ceac
+182	206	1773667492669001053	ggml-populate-prefix/src/ggml-populate-stamp/ggml-populate-done	f707700c1a00ceac
+182	206	1773667492669001053	/Users/baljeet/FlutterWorkspace/voice_ink/packages/whisper_flutter_new/android/.cxx/Release/9p1m6r2e/x86/_deps/ggml-subbuild/CMakeFiles/ggml-populate-complete	f707700c1a00ceac
+182	206	1773667492669001053	/Users/baljeet/FlutterWorkspace/voice_ink/packages/whisper_flutter_new/android/.cxx/Release/9p1m6r2e/x86/_deps/ggml-subbuild/ggml-populate-prefix/src/ggml-populate-stamp/ggml-populate-done	f707700c1a00ceac

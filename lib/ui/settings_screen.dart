@@ -120,7 +120,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
                 // Only show keyboard shortcut & mic sections on desktop
-                if (!Platform.isAndroid && !Platform.isIOS) ...[
+                ...[
                   // ── Microphone Selection ──
                   if (widget.audioDevice != null) ...[
                     const SizedBox(height: 32),

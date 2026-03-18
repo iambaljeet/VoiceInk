@@ -39,19 +39,13 @@ class DictationService extends ChangeNotifier {
   Future<void> init() async {
     await _audio.init();
 
-    if (Platform.isAndroid || Platform.isIOS) {
-      // Mobile: use FFI-based whisper (no CLI binary needed)
-      _whisper = WhisperService();
-      debugPrint('[VoiceInk] Whisper FFI mode (mobile)');
+    // Desktop: use whisper CLI binary
+    final whisperPath = await _resolveWhisperPath();
+    if (whisperPath != null) {
+      _whisper = WhisperService(whisperPath);
+      debugPrint('[VoiceInk] Whisper binary found at: $whisperPath');
     } else {
-      // Desktop: use whisper CLI binary
-      final whisperPath = await _resolveWhisperPath();
-      if (whisperPath != null) {
-        _whisper = WhisperService(whisperPath);
-        debugPrint('[VoiceInk] Whisper binary found at: $whisperPath');
-      } else {
-        debugPrint('[VoiceInk] WARNING: whisper-cli not found!');
-      }
+      debugPrint('[VoiceInk] WARNING: whisper-cli not found!');
     }
 
     final prefs = await SharedPreferences.getInstance();

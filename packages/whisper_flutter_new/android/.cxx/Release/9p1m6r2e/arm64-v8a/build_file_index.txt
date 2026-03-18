@@ -1,0 +1,4 @@
+/Users/baljeet/FlutterWorkspace/voice_ink/native/whisper.cpp/ggml/CMakeLists.txt
+/Users/baljeet/FlutterWorkspace/voice_ink/native/whisper.cpp/ggml/src/CMakeLists.txt
+/Users/baljeet/FlutterWorkspace/voice_ink/native/whisper.cpp/ggml/src/ggml-cpu/CMakeLists.txt
+/Users/baljeet/FlutterWorkspace/voice_ink/packages/whisper_flutter_new/src/CMakeLists.txt

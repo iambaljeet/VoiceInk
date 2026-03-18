@@ -1,0 +1,58 @@
+{
+  "buildFiles": [
+    "/Users/baljeet/FlutterWorkspace/voice_ink/native/whisper.cpp/ggml/CMakeLists.txt",
+    "/Users/baljeet/FlutterWorkspace/voice_ink/native/whisper.cpp/ggml/src/CMakeLists.txt",
+    "/Users/baljeet/FlutterWorkspace/voice_ink/native/whisper.cpp/ggml/src/ggml-cpu/CMakeLists.txt",
+    "/Users/baljeet/FlutterWorkspace/voice_ink/packages/whisper_flutter_new/src/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Users/baljeet/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/baljeet/FlutterWorkspace/voice_ink/packages/whisper_flutter_new/android/.cxx/Release/9p1m6r2e/x86_64",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Users/baljeet/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/baljeet/FlutterWorkspace/voice_ink/packages/whisper_flutter_new/android/.cxx/Release/9p1m6r2e/x86_64",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "ggml-base::@13ca10ed1afff475bcb7": {
+      "artifactName": "ggml-base",
+      "abi": "x86_64",
+      "output": "/Users/baljeet/FlutterWorkspace/voice_ink/build/whisper_flutter_new/intermediates/cxx/Release/9p1m6r2e/obj/x86_64/libggml-base.so",
+      "runtimeFiles": []
+    },
+    "ggml-cpu::@13ca10ed1afff475bcb7": {
+      "artifactName": "ggml-cpu",
+      "abi": "x86_64",
+      "output": "/Users/baljeet/FlutterWorkspace/voice_ink/build/whisper_flutter_new/intermediates/cxx/Release/9p1m6r2e/obj/x86_64/libggml-cpu.so",
+      "runtimeFiles": [
+        "/Users/baljeet/FlutterWorkspace/voice_ink/build/whisper_flutter_new/intermediates/cxx/Release/9p1m6r2e/obj/x86_64/libggml-base.so",
+        "/Users/baljeet/Library/Android/sdk/ndk/27.0.11902837/toolchains/llvm/prebuilt/darwin-x86_64/lib/clang/18/lib/linux/x86_64/libomp.so"
+      ]
+    },
+    "whisper::@6890427a1f51a3e7e1df": {
+      "artifactName": "whisper",
+      "abi": "x86_64",
+      "output": "/Users/baljeet/FlutterWorkspace/voice_ink/build/whisper_flutter_new/intermediates/cxx/Release/9p1m6r2e/obj/x86_64/libwhisper.so",
+      "runtimeFiles": [
+        "/Users/baljeet/FlutterWorkspace/voice_ink/build/whisper_flutter_new/intermediates/cxx/Release/9p1m6r2e/obj/x86_64/libggml.so",
+        "/Users/baljeet/FlutterWorkspace/voice_ink/build/whisper_flutter_new/intermediates/cxx/Release/9p1m6r2e/obj/x86_64/libggml-cpu.so",
+        "/Users/baljeet/FlutterWorkspace/voice_ink/build/whisper_flutter_new/intermediates/cxx/Release/9p1m6r2e/obj/x86_64/libggml-base.so"
+      ]
+    },
+    "ggml::@13ca10ed1afff475bcb7": {
+      "artifactName": "ggml",
+      "abi": "x86_64",
+      "output": "/Users/baljeet/FlutterWorkspace/voice_ink/build/whisper_flutter_new/intermediates/cxx/Release/9p1m6r2e/obj/x86_64/libggml.so",
+      "runtimeFiles": [
+        "/Users/baljeet/FlutterWorkspace/voice_ink/build/whisper_flutter_new/intermediates/cxx/Release/9p1m6r2e/obj/x86_64/libggml-cpu.so",
+        "/Users/baljeet/FlutterWorkspace/voice_ink/build/whisper_flutter_new/intermediates/cxx/Release/9p1m6r2e/obj/x86_64/libggml-base.so"
+      ]
+    }
+  }
+}

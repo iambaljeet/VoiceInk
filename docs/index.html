@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoiceInk — Free Local Voice Dictation for Mac &amp; Windows</title>
+  <meta name="description" content="VoiceInk is a free, privacy-first voice dictation app for macOS and Windows. No ads, no cloud, no credit card. Just download and speak." />
+  <meta name="keywords" content="voice dictation, speech to text, macOS, Windows, offline, privacy, free, whisper, voice typing" />
+  <meta name="author" content="Baljeet" />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="VoiceInk — Free Local Voice Dictation" />
+  <meta property="og:description" content="Type with your voice. 100% free, 100% private. No ads, no cloud, no credit card." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://iambaljeet.github.io/VoiceInk/" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Material Icons -->
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ===================== NAVBAR ===================== -->
+  <nav class="navbar" id="navbar">
+    <div class="container nav-container">
+      <a href="#" class="nav-brand">
+        <span class="brand-icon material-icons-round">mic</span>
+        <span class="brand-text">VoiceInk</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#how-it-works">How It Works</a>
+        <a href="#download" class="nav-cta">Download Free</a>
+      </div>
+      <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle menu">
+        <span class="material-icons-round">menu</span>
+      </button>
+    </div>
+    <!-- Mobile Menu -->
+    <div class="mobile-menu" id="mobileMenu">
+      <a href="#features">Features</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#how-it-works">How It Works</a>
+      <a href="#download" class="nav-cta">Download Free</a>
+    </div>
+  </nav>
+
+  <!-- ===================== HERO ===================== -->
+  <section class="hero" id="hero">
+    <div class="container hero-container">
+      <div class="hero-content">
+        <div class="hero-badge">
+          <span class="material-icons-round">verified</span>
+          100% Free &amp; Open Source
+        </div>
+        <h1 class="hero-title">
+          Type with your <span class="gradient-text">Voice</span>,<br />
+          not your keyboard.
+        </h1>
+        <p class="hero-subtitle">
+          VoiceInk is a free, local voice dictation app for macOS &amp; Windows.
+          No ads, no cloud uploads, no credit card required.
+          Just download, install, and start speaking.
+        </p>
+
+        <div class="hero-downloads">
+          <a href="https://github.com/iambaljeet/VoiceInk/releases/latest" class="btn btn-primary btn-mac" target="_blank" rel="noopener">
+            <svg class="btn-icon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+            Download for Mac
+          </a>
+          <a href="https://github.com/iambaljeet/VoiceInk/releases/latest" class="btn btn-secondary btn-win" target="_blank" rel="noopener">
+            <svg class="btn-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M3 12V6.75l8-1.25V12H3zm0 .5h8v6.5l-8-1.25V12.5zM11.5 5.34l9.5-1.59V12h-9.5V5.34zM11.5 12.5H21v7.75l-9.5-1.59V12.5z"/></svg>
+            Download for Windows
+          </a>
+        </div>
+        <div class="hero-platform-notes">
+          <span class="platform-note">
+            <span class="material-icons-round" style="font-size:14px">laptop_mac</span>
+            macOS — Apple Silicon only (M1/M2/M3/M4)
+          </span>
+          <span class="platform-note">
+            <span class="material-icons-round" style="font-size:14px">desktop_windows</span>
+            Windows 10/11 — x64
+          </span>
+        </div>
+      </div>
+
+      <div class="hero-media">
+        <div class="video-wrapper">
+          <div class="video-placeholder" id="videoPlaceholder">
+            <!-- Replace the src below with your actual demo video URL -->
+            <video
+              id="heroVideo"
+              autoplay
+              loop
+              muted
+              playsinline
+              poster=""
+            >
+              <!-- <source src="demo.mp4" type="video/mp4" /> -->
+            </video>
+            <div class="video-fallback">
+              <span class="material-icons-round">play_circle</span>
+              <p>Add your demo video<br/><code>docs/demo.mp4</code></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floating shapes -->
+    <div class="hero-bg-shapes">
+      <div class="shape shape-1"></div>
+      <div class="shape shape-2"></div>
+      <div class="shape shape-3"></div>
+    </div>
+  </section>
+
+  <!-- ===================== SOCIAL PROOF BAR ===================== -->
+  <section class="social-proof">
+    <div class="container">
+      <div class="proof-items">
+        <div class="proof-item">
+          <span class="material-icons-round">money_off</span>
+          <span>No Credit Card</span>
+        </div>
+        <div class="proof-divider"></div>
+        <div class="proof-item">
+          <span class="material-icons-round">block</span>
+          <span>No Ads Ever</span>
+        </div>
+        <div class="proof-divider"></div>
+        <div class="proof-item">
+          <span class="material-icons-round">cloud_off</span>
+          <span>No Cloud Uploads</span>
+        </div>
+        <div class="proof-divider"></div>
+        <div class="proof-item">
+          <span class="material-icons-round">code</span>
+          <span>Open Source</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== FEATURES ===================== -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">Features</span>
+        <h2 class="section-title">Everything you need,<br/>nothing you don't.</h2>
+        <p class="section-subtitle">VoiceInk is built to be simple, fast, and private. No bloat, no accounts, no setup headaches.</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <span class="material-icons-round">touch_app</span>
+          </div>
+          <h3>Instant Setup</h3>
+          <p>Download, install, and start dictating in under a minute. No accounts, no sign-ups, no configuration needed.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <span class="material-icons-round">keyboard</span>
+          </div>
+          <h3>Push-to-Talk</h3>
+          <p>Hold your shortcut key to speak, release to type. Your words appear instantly in any text field or app.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <span class="material-icons-round">psychology</span>
+          </div>
+          <h3>AI-Powered Accuracy</h3>
+          <p>Powered by OpenAI's Whisper — choose from 9 models for the perfect balance of speed and accuracy.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <span class="material-icons-round">translate</span>
+          </div>
+          <h3>52+ Languages</h3>
+          <p>Full multilingual support including English, Spanish, French, German, Japanese, Chinese, Hindi, Arabic, and many more.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <span class="material-icons-round">dock</span>
+          </div>
+          <h3>Lives in Your Menu Bar</h3>
+          <p>A tiny floating capsule stays out of your way. It shows recording status with elegant animations — no clunky windows.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <span class="material-icons-round">auto_fix_high</span>
+          </div>
+          <h3>Smart Text Cleanup</h3>
+          <p>Automatic removal of filler words ("um", "uh"), smart punctuation, and capitalization so your text reads naturally.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <span class="material-icons-round">mic</span>
+          </div>
+          <h3>Mic Selection</h3>
+          <p>Choose from any connected microphone with a real-time audio level meter. Built-in or external — your choice.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <span class="material-icons-round">tune</span>
+          </div>
+          <h3>Customizable Shortcuts</h3>
+          <p>Pick from preset hotkeys (⌥Space, ⌃Space, ⌥⇧Space) or configure your own to fit your workflow perfectly.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== PRIVACY ===================== -->
+  <section class="privacy" id="privacy">
+    <div class="container">
+      <div class="privacy-layout">
+        <div class="privacy-content">
+          <span class="section-label">Privacy First</span>
+          <h2 class="section-title">Your voice stays<br/><span class="gradient-text">on your device</span>.</h2>
+          <p class="section-subtitle">
+            We believe voice data is deeply personal. That's why VoiceInk processes everything
+            locally on your machine. No servers, no analytics, no telemetry — ever.
+          </p>
+
+          <div class="privacy-points">
+            <div class="privacy-point">
+              <span class="material-icons-round">shield</span>
+              <div>
+                <strong>100% Offline Processing</strong>
+                <p>All speech recognition runs on your CPU using Whisper AI. Your audio never touches the internet.</p>
+              </div>
+            </div>
+            <div class="privacy-point">
+              <span class="material-icons-round">analytics</span>
+              <div>
+                <strong>Zero Analytics &amp; Tracking</strong>
+                <p>No usage analytics, no crash reporters, no telemetry of any kind. We literally can't see what you do.</p>
+              </div>
+            </div>
+            <div class="privacy-point">
+              <span class="material-icons-round">dns</span>
+              <div>
+                <strong>No Servers, No Accounts</strong>
+                <p>There is no backend. No servers to hack. No accounts to breach. Your data exists only on your machine.</p>
+              </div>
+            </div>
+            <div class="privacy-point">
+              <span class="material-icons-round">visibility_off</span>
+              <div>
+                <strong>No Data Collection — Period</strong>
+                <p>We don't collect your voice, your text, your usage patterns, or anything else. What happens on your machine stays there.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="privacy-visual">
+          <div class="privacy-card-stack">
+            <div class="p-card p-card-1">
+              <span class="material-icons-round">cloud_off</span>
+              <span>No Cloud</span>
+            </div>
+            <div class="p-card p-card-2">
+              <span class="material-icons-round">wifi_off</span>
+              <span>Works Offline</span>
+            </div>
+            <div class="p-card p-card-3">
+              <span class="material-icons-round">lock</span>
+              <span>Your Data, Your Device</span>
+            </div>
+            <div class="p-card p-card-4">
+              <span class="material-icons-round">gpp_good</span>
+              <span>Zero Telemetry</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== HOW IT WORKS ===================== -->
+  <section class="how-it-works" id="how-it-works">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">How It Works</span>
+        <h2 class="section-title">Three steps. That's it.</h2>
+        <p class="section-subtitle">No setup wizards, no API keys, no subscriptions. Download → Install → Talk.</p>
+      </div>
+
+      <div class="steps-grid">
+        <div class="step-card">
+          <div class="step-number">1</div>
+          <div class="step-icon">
+            <span class="material-icons-round">download</span>
+          </div>
+          <h3>Download &amp; Install</h3>
+          <p>Grab the installer for your platform. Double-click to install. Done in 30 seconds.</p>
+        </div>
+
+        <div class="step-connector">
+          <span class="material-icons-round">arrow_forward</span>
+        </div>
+
+        <div class="step-card">
+          <div class="step-number">2</div>
+          <div class="step-icon">
+            <span class="material-icons-round">settings_voice</span>
+          </div>
+          <h3>Choose Your Model</h3>
+          <p>Pick a Whisper model (Tiny for speed, Large for accuracy). It downloads once — then works offline forever.</p>
+        </div>
+
+        <div class="step-connector">
+          <span class="material-icons-round">arrow_forward</span>
+        </div>
+
+        <div class="step-card">
+          <div class="step-number">3</div>
+          <div class="step-icon">
+            <span class="material-icons-round">record_voice_over</span>
+          </div>
+          <h3>Hold &amp; Speak</h3>
+          <p>Hold your shortcut key, speak naturally, and release. Your words appear instantly wherever you're typing.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== MODELS ===================== -->
+  <section class="models" id="models">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">Whisper Models</span>
+        <h2 class="section-title">Choose your engine.</h2>
+        <p class="section-subtitle">From lightning-fast to studio-accurate. All models run 100% locally on your machine.</p>
+      </div>
+
+      <div class="models-table-wrap">
+        <table class="models-table">
+          <thead>
+            <tr>
+              <th>Model</th>
+              <th>Languages</th>
+              <th>Size</th>
+              <th>Speed</th>
+              <th>Accuracy</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Tiny</strong></td>
+              <td>English / 52+</td>
+              <td>75 MB</td>
+              <td><span class="badge badge-green">Fastest</span></td>
+              <td><span class="meter"><span style="width:40%"></span></span></td>
+            </tr>
+            <tr>
+              <td><strong>Base</strong></td>
+              <td>English / 52+</td>
+              <td>148 MB</td>
+              <td><span class="badge badge-green">Fast</span></td>
+              <td><span class="meter"><span style="width:55%"></span></span></td>
+            </tr>
+            <tr>
+              <td><strong>Small</strong></td>
+              <td>English / 52+</td>
+              <td>487 MB</td>
+              <td><span class="badge badge-yellow">Medium</span></td>
+              <td><span class="meter"><span style="width:72%"></span></span></td>
+            </tr>
+            <tr>
+              <td><strong>Medium</strong></td>
+              <td>English / 52+</td>
+              <td>1.5 GB</td>
+              <td><span class="badge badge-yellow">Medium</span></td>
+              <td><span class="meter"><span style="width:85%"></span></span></td>
+            </tr>
+            <tr class="recommended-row">
+              <td><strong>Large V3 Turbo</strong> <span class="badge badge-purple">Recommended</span></td>
+              <td>52+</td>
+              <td>1.6 GB</td>
+              <td><span class="badge badge-green">Fast</span></td>
+              <td><span class="meter"><span style="width:97%"></span></span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== DOWNLOAD CTA ===================== -->
+  <section class="download-cta" id="download">
+    <div class="container">
+      <div class="cta-card">
+        <h2>Ready to ditch the keyboard?</h2>
+        <p>Download VoiceInk for free. No sign-up, no trial period, no catch.</p>
+
+        <div class="cta-buttons">
+          <a href="https://github.com/iambaljeet/VoiceInk/releases/latest" class="btn btn-primary btn-lg" target="_blank" rel="noopener">
+            <svg class="btn-icon" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+            Download for Mac
+          </a>
+          <a href="https://github.com/iambaljeet/VoiceInk/releases/latest" class="btn btn-secondary btn-lg" target="_blank" rel="noopener">
+            <svg class="btn-icon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M3 12V6.75l8-1.25V12H3zm0 .5h8v6.5l-8-1.25V12.5zM11.5 5.34l9.5-1.59V12h-9.5V5.34zM11.5 12.5H21v7.75l-9.5-1.59V12.5z"/></svg>
+            Download for Windows
+          </a>
+        </div>
+
+        <div class="cta-notes">
+          <p><strong>Mac:</strong> Compatible with Apple Silicon processors only (M1, M2, M3, M4)</p>
+          <p><strong>Windows:</strong> Windows 10 or later, 64-bit</p>
+          <p class="cta-unsigned-note">
+            <span class="material-icons-round" style="font-size:16px">info</span>
+            macOS: Since the app is not code-signed, right-click → Open → Open on first launch, or go to System Settings → Privacy &amp; Security → Open Anyway.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== OPEN SOURCE ===================== -->
+  <section class="open-source" id="open-source">
+    <div class="container">
+      <div class="oss-layout">
+        <div class="oss-content">
+          <span class="section-label">Open Source</span>
+          <h2 class="section-title">Built in the open.</h2>
+          <p>VoiceInk is fully open source under the MIT License. Read the code, fork it, contribute, or build your own version. Built with Flutter for a native experience on every platform.</p>
+          <a href="https://github.com/iambaljeet/VoiceInk" class="btn btn-outline" target="_blank" rel="noopener">
+            <svg class="btn-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 .3a12 12 0 00-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49 1 .1-.78.42-1.3.76-1.6-2.67-.31-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 016.02 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 011.23 3.22c0 4.61-2.8 5.62-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0012 .3"/></svg>
+            View on GitHub
+          </a>
+        </div>
+        <div class="oss-stats">
+          <div class="stat-card">
+            <span class="stat-icon material-icons-round">code</span>
+            <span class="stat-label">Built with</span>
+            <span class="stat-value">Flutter</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon material-icons-round">gavel</span>
+            <span class="stat-label">License</span>
+            <span class="stat-value">MIT</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon material-icons-round">devices</span>
+            <span class="stat-label">Platforms</span>
+            <span class="stat-value">Mac &amp; Win</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== FOOTER ===================== -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <span class="material-icons-round">mic</span>
+          <span>VoiceInk</span>
+        </div>
+        <div class="footer-links">
+          <a href="#features">Features</a>
+          <a href="#privacy">Privacy</a>
+          <a href="#how-it-works">How It Works</a>
+          <a href="#download">Download</a>
+          <a href="https://github.com/iambaljeet/VoiceInk" target="_blank" rel="noopener">GitHub</a>
+        </div>
+      </div>
+      <div class="footer-divider"></div>
+      <div class="footer-bottom">
+        <p>
+          Developed with ❤️ using <strong>Flutter</strong> by
+          <a href="https://www.linkedin.com/in/devbaljeet" target="_blank" rel="noopener">Baljeet</a>
+          — for the Community.
+        </p>
+        <div class="footer-social">
+          <a href="https://github.com/iambaljeet/VoiceInk" target="_blank" rel="noopener" aria-label="GitHub">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 .3a12 12 0 00-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49 1 .1-.78.42-1.3.76-1.6-2.67-.31-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 016.02 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 011.23 3.22c0 4.61-2.8 5.62-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0012 .3"/></svg>
+          </a>
+          <a href="https://www.linkedin.com/in/devbaljeet" target="_blank" rel="noopener" aria-label="LinkedIn">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.34V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 11-.01-4.13 2.06 2.06 0 01.01 4.13zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.73C24 .77 23.2 0 22.22 0z"/></svg>
+          </a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

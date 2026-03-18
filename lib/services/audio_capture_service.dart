@@ -45,7 +45,7 @@ class AudioCaptureService {
       const RecordConfig(
         encoder: AudioEncoder.wav,
         numChannels: 1,
-        // Use 44100Hz — universally supported on Android.
+        // Use 44100Hz — universally supported sample rate.
         // 16kHz is often not supported and produces silence.
         // Native code resamples to 16kHz for whisper.cpp.
         sampleRate: 44100,

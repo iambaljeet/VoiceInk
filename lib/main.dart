@@ -22,10 +22,8 @@ import 'ui/permission_guard_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (!Platform.isAndroid && !Platform.isIOS) {
-    await windowManager.ensureInitialized();
-    await hotKeyManager.unregisterAll();
-  }
+  await windowManager.ensureInitialized();
+  await hotKeyManager.unregisterAll();
   runApp(const VoiceInkApp());
 }
 
