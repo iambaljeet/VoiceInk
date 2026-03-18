@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.voiceink" "\0"
-            VALUE "FileDescription", "voice_ink" "\0"
+            VALUE "FileDescription", "VoiceInk" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "voice_ink" "\0"
+            VALUE "InternalName", "VoiceInk" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.voiceink. All rights reserved." "\0"
-            VALUE "OriginalFilename", "voice_ink.exe" "\0"
-            VALUE "ProductName", "voice_ink" "\0"
+            VALUE "OriginalFilename", "VoiceInk.exe" "\0"
+            VALUE "ProductName", "VoiceInk" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

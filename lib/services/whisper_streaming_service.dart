@@ -10,6 +10,10 @@ import 'text_cleanup_service.dart';
 import 'text_injection_service.dart';
 import 'model_manager.dart';
 import 'whisper_service.dart';
+import 'dictionary_service.dart';
+import 'stats_service.dart';
+import '../models/writing_style.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Real-time streaming STT using whisper.cpp with sliding window approach.
 ///
@@ -266,7 +270,7 @@ class WhisperStreamingService extends ChangeNotifier {
       if (trimmed.isNotEmpty &&
           !trimmed.contains('[BLANK_AUDIO]') &&
           !trimmed.contains('[BLANK AUDIO]')) {
-        final cleaned = _cleanup.process(trimmed);
+        final cleaned = await _postProcess(trimmed);
         if (cleaned.isNotEmpty) {
           _committedText += '$cleaned ';
           _injection.injectText('$cleaned ');
@@ -339,7 +343,7 @@ class WhisperStreamingService extends ChangeNotifier {
           if (trimmed.isNotEmpty &&
               !trimmed.contains('[BLANK_AUDIO]') &&
               !trimmed.contains('[BLANK AUDIO]')) {
-            final cleaned = _cleanup.process(trimmed);
+            final cleaned = await _postProcess(trimmed);
             if (cleaned.isNotEmpty) {
               _committedText += '$cleaned ';
               _injection.injectText('$cleaned ');
@@ -412,6 +416,31 @@ class WhisperStreamingService extends ChangeNotifier {
   }
 
   TextCleanupService get cleanup => _cleanup;
+
+  /// Shared post-processing: cleanup → writing style → dictionary → stats
+  Future<String> _postProcess(String rawText) async {
+    // Load current writing style from preferences
+    final prefs = await SharedPreferences.getInstance();
+    final style = WritingStyle.fromString(prefs.getString('writing_style') ?? 'clean');
+
+    String cleaned;
+    if (style == WritingStyle.verbatim) {
+      cleaned = rawText.trim();
+    } else {
+      cleaned = _cleanup.process(rawText);
+    }
+
+    cleaned = style.apply(cleaned);
+    cleaned = DictionaryService.instance.applyReplacements(cleaned);
+
+    // Record stats
+    if (cleaned.isNotEmpty) {
+      final wordCount = cleaned.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+      await StatsService.instance.recordTranscription(wordCount: wordCount);
+    }
+
+    return cleaned;
+  }
 
   @override
   void dispose() {

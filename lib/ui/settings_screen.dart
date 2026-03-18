@@ -1,13 +1,15 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/whisper_model.dart';
+import '../models/writing_style.dart';
 import '../services/model_manager.dart';
 import '../services/dictation_service.dart';
 import '../services/stt_engine_manager.dart';
 import '../services/whisper_streaming_service.dart';
 import '../services/hotkey_service.dart';
 import '../services/audio_device_service.dart';
+import '../services/stats_service.dart';
 import 'onboarding_screen.dart';
+import 'dictionary_screen.dart';
 
 import '../config/app_config.dart';
 
@@ -52,6 +54,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ── Stats & Streaks (top of settings) ──
+                _buildSectionHeader('Stats & Streaks'),
+                const SizedBox(height: 8),
+                _buildStatsSection(),
+                const SizedBox(height: 32),
+
                 // Engine selection
                 if (widget.engineManager != null) ...[
                   _buildSectionHeader('Speech Engine'),
@@ -119,6 +127,114 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     widget.dictationService.savePreferences();
                   },
                 ),
+                const SizedBox(height: 32),
+
+                // ── Writing Style ──
+                _buildSectionHeader('Writing Style'),
+                const SizedBox(height: 8),
+                const Text(
+                  'Choose how your transcriptions are formatted.',
+                  style: TextStyle(color: Colors.white60, fontSize: 13),
+                ),
+                const SizedBox(height: 12),
+                ...WritingStyle.values.map((style) {
+                  final isSelected = widget.dictationService.writingStyle == style;
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        widget.dictationService.writingStyle = style;
+                      });
+                      widget.dictationService.savePreferences();
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? const Color(0xFF3B82F6).withValues(alpha: 0.15)
+                            : Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected
+                              ? const Color(0xFF3B82F6).withValues(alpha: 0.5)
+                              : Colors.white.withValues(alpha: 0.1),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+                            color: isSelected ? const Color(0xFF3B82F6) : Colors.white38,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(style.label,
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 15)),
+                                Text(style.description,
+                                    style: TextStyle(
+                                        color: Colors.white.withValues(alpha: 0.5),
+                                        fontSize: 11)),
+                              ],
+                            ),
+                          ),
+                          if (isSelected)
+                            const Text('Active',
+                                style: TextStyle(
+                                    color: Color(0xFF3B82F6),
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                const SizedBox(height: 32),
+
+                // ── Custom Dictionary ──
+                _buildSectionHeader('Custom Dictionary'),
+                const SizedBox(height: 8),
+                const Text(
+                  'Add word replacement rules for auto-correction and custom terms.',
+                  style: TextStyle(color: Colors.white60, fontSize: 13),
+                ),
+                const SizedBox(height: 12),
+                _buildToggle(
+                  'Enable dictionary',
+                  'Apply custom word replacements to transcriptions.',
+                  widget.dictationService.dictionary.isEnabled,
+                  (v) {
+                    setState(() {
+                      widget.dictationService.dictionary.isEnabled = v;
+                    });
+                    widget.dictationService.savePreferences();
+                  },
+                ),
+                const SizedBox(height: 8),
+                Center(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const DictionaryScreen(),
+                      ));
+                    },
+                    icon: const Icon(Icons.book_outlined, size: 16),
+                    label: const Text('Manage Dictionary', style: TextStyle(fontSize: 13)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF3B82F6),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+
                 // Only show keyboard shortcut & mic sections on desktop
                 ...[
                   // ── Microphone Selection ──
@@ -492,6 +608,112 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         );
       },
+    );
+  }
+
+  // ── Stats Section ──
+
+  Widget _buildStatsSection() {
+    final stats = StatsService.instance;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              _buildStatTile('Today', '${stats.wordsToday}', 'words'),
+              const SizedBox(width: 12),
+              _buildStatTile('This Month', '${stats.wordsThisMonth}', 'words'),
+              const SizedBox(width: 12),
+              _buildStatTile('Total', '${stats.wordsTotal}', 'words'),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _buildStatTile('Streak', '${stats.currentStreak}', 'days'),
+              const SizedBox(width: 12),
+              _buildStatTile('Best Streak', '${stats.bestStreak}', 'days'),
+              const SizedBox(width: 12),
+              _buildStatTile('Today', '${stats.transcriptionsToday}', 'transcriptions'),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Center(
+            child: TextButton.icon(
+              onPressed: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: const Color(0xFF1a1a2e),
+                    title: const Text('Reset Stats?', style: TextStyle(color: Colors.white)),
+                    content: const Text(
+                      'This will reset all word counts, streaks, and transcription counts to zero.',
+                      style: TextStyle(color: Colors.white60),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(false),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(true),
+                        child: const Text('Reset', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await stats.resetAll();
+                  setState(() {});
+                }
+              },
+              icon: const Icon(Icons.restart_alt, size: 16, color: Colors.white38),
+              label: const Text('Reset Stats', style: TextStyle(color: Colors.white38, fontSize: 12)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatTile(String label, String value, String unit) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: const TextStyle(
+                color: Color(0xFF3B82F6),
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              unit,
+              style: const TextStyle(color: Colors.white38, fontSize: 10),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: const TextStyle(color: Colors.white60, fontSize: 11),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -40,6 +40,8 @@ dependencies:
     path: packages/whisper_flutter_new
   path: ^1.9.1
   speech_to_text: ^7.3.0
+  sqflite_common_ffi: ^2.3.4+4
+  sqflite_common: ^2.5.4+5
 
 dev_dependencies:
   flutter_test:
