@@ -47,30 +47,33 @@ jobs:
 
       - name: Code sign (ad-hoc)
         run: |
-          codesign --deep --force --sign - \
-            build/macos/Build/Products/Release/voice_ink.app
+          APP_BUNDLE=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
+          echo "Signing: $APP_BUNDLE"
+          codesign --deep --force --sign - "$APP_BUNDLE"
 
       - name: Create DMG
         run: |
           brew install create-dmg
           APP_NAME="VoiceInk"
           DMG_NAME="${APP_NAME}-macOS-arm64.dmg"
+          APP_BUNDLE=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
+          APP_BASENAME=$(basename "$APP_BUNDLE")
 
           create-dmg \
             --volname "$APP_NAME" \
             --window-pos 200 120 \
             --window-size 600 400 \
             --icon-size 100 \
-            --icon "voice_ink.app" 175 190 \
+            --icon "$APP_BASENAME" 175 190 \
             --app-drop-link 425 190 \
             "$DMG_NAME" \
-            "build/macos/Build/Products/Release/voice_ink.app" || true
+            "$APP_BUNDLE" || true
 
           # Fallback to ZIP if DMG failed
           if [ ! -f "$DMG_NAME" ]; then
             echo "DMG creation failed, creating ZIP instead..."
             cd build/macos/Build/Products/Release
-            zip -r "${GITHUB_WORKSPACE}/${APP_NAME}-macOS-arm64.zip" voice_ink.app
+            zip -r "${GITHUB_WORKSPACE}/${APP_NAME}-macOS-arm64.zip" "$APP_BASENAME"
           fi
 
       - name: Upload macOS artifact
@@ -180,7 +183,7 @@ jobs:
             ## Windows Installation
 
             1. Download and extract the ZIP
-            2. Run `voice_ink.exe`
+            2. Run `VoiceInk.exe`
 
             ## Highlights
 

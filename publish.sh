@@ -128,16 +128,30 @@ edit_app_info() {
         # pubspec.yaml description
         sed -i '' "s/^description:.*/description: $NEW_APP_NAME — Local Voice Dictation/" pubspec.yaml
 
-        # Windows main.cpp window title
-        sed -i '' "s/L\".*\"/L\"$NEW_APP_NAME\"/" windows/runner/main.cpp
+        # macOS PRODUCT_NAME (controls .app bundle name)
+        sed -i '' "s/^PRODUCT_NAME = .*/PRODUCT_NAME = $NEW_APP_NAME/" \
+            macos/Runner/Configs/AppInfo.xcconfig
 
-        # Windows Runner.rc (ProductName + FileDescription)
+        # Windows CMakeLists.txt (project name + binary name)
+        sed -i '' "s/^project(.*LANGUAGES CXX)/project($NEW_APP_NAME LANGUAGES CXX)/" \
+            windows/CMakeLists.txt
+        sed -i '' "s/set(BINARY_NAME \".*\")/set(BINARY_NAME \"$NEW_APP_NAME\")/" \
+            windows/CMakeLists.txt
+
+        # Windows main.cpp window title
+        sed -i '' "s/Create(L\".*\"/Create(L\"$NEW_APP_NAME\"/" windows/runner/main.cpp
+
+        # Windows Runner.rc (ProductName, FileDescription, InternalName, OriginalFilename)
         sed -i '' "s/VALUE \"ProductName\", \".*\"/VALUE \"ProductName\", \"$NEW_APP_NAME\"/" \
             windows/runner/Runner.rc
         sed -i '' "s/VALUE \"FileDescription\", \".*\"/VALUE \"FileDescription\", \"$NEW_APP_NAME\"/" \
             windows/runner/Runner.rc
+        sed -i '' "s/VALUE \"InternalName\", \".*\"/VALUE \"InternalName\", \"$NEW_APP_NAME\"/" \
+            windows/runner/Runner.rc
+        sed -i '' "s/VALUE \"OriginalFilename\", \".*\"/VALUE \"OriginalFilename\", \"$NEW_APP_NAME.exe\"/" \
+            windows/runner/Runner.rc
 
-        log "App name updated."
+        log "App name updated across all platform configs."
     fi
 
     # ── Apply version ──
@@ -324,10 +338,20 @@ build_macos() {
     flutter build macos --release
     log "macOS build complete."
 
-    local app_path="build/macos/Build/Products/Release/voice_ink.app"
+    # Derive .app name from PRODUCT_NAME in xcconfig
+    local product_name
+    product_name=$(grep "^PRODUCT_NAME" macos/Runner/Configs/AppInfo.xcconfig | sed 's/.*= *//' || echo "VoiceInk")
+    local app_path="build/macos/Build/Products/Release/${product_name}.app"
+
     if [ ! -d "$app_path" ]; then
-        err "Build output not found: $app_path"
-        return 1
+        warn "Expected ${product_name}.app not found, searching..."
+        app_path=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
+        if [ -z "$app_path" ] || [ ! -d "$app_path" ]; then
+            err "No .app bundle found in build output!"
+            return 1
+        fi
+        product_name=$(basename "$app_path" .app)
+        info "Found: ${product_name}.app"
     fi
 
     # Code sign (ad-hoc if no identity)
@@ -358,7 +382,7 @@ build_macos() {
             --window-pos 200 120 \
             --window-size 600 400 \
             --icon-size 100 \
-            --icon "voice_ink.app" 175 190 \
+            --icon "${product_name}.app" 175 190 \
             --app-drop-link 425 190 \
             "${artifact_name}.dmg" \
             "$app_path" || true  # create-dmg returns non-zero even on success sometimes
