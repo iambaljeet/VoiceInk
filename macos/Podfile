@@ -38,5 +38,9 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_macos_build_settings(target)
+    # Disable strict Swift concurrency to fix speech_to_text build with Xcode 16+
+    target.build_configurations.each do |config|
+      config.build_settings['SWIFT_STRICT_CONCURRENCY'] = 'minimal'
+    end
   end
 end

@@ -1,5 +1,5 @@
 # VoiceInk — Manual Release Workflow
-# Builds macOS DMG + Windows ZIP, then publishes a GitHub Release.
+# Builds macOS DMG + Windows Setup EXE, then publishes a GitHub Release.
 # Trigger: Manual only (workflow_dispatch) — never runs on push/PR.
 
 name: Release
@@ -17,7 +17,6 @@ on:
         type: boolean
         default: true
 
-# Cancel any in-progress runs for the same workflow
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: true
@@ -28,7 +27,7 @@ permissions:
 jobs:
   # ── Build macOS (Apple Silicon) ──────────────────────────────────────────
   build-macos:
-    runs-on: macos-14  # M1 runner (Apple Silicon)
+    runs-on: macos-14
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,12 +41,20 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Install CocoaPods dependencies
+        working-directory: macos
+        run: pod install
+
       - name: Build macOS release
         run: flutter build macos --release
 
       - name: Code sign (ad-hoc)
         run: |
           APP_BUNDLE=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
+          if [ -z "$APP_BUNDLE" ]; then
+            echo "ERROR: No .app bundle found!"
+            exit 1
+          fi
           echo "Signing: $APP_BUNDLE"
           codesign --deep --force --sign - "$APP_BUNDLE"
 
@@ -69,9 +76,9 @@ jobs:
             "$DMG_NAME" \
             "$APP_BUNDLE" || true
 
-          # Fallback to ZIP if DMG failed
+          # Fallback to ZIP if DMG creation failed
           if [ ! -f "$DMG_NAME" ]; then
-            echo "DMG creation failed, creating ZIP instead..."
+            echo "::warning::DMG creation failed, creating ZIP instead"
             cd build/macos/Build/Products/Release
             zip -r "${GITHUB_WORKSPACE}/${APP_NAME}-macOS-arm64.zip" "$APP_BASENAME"
           fi
@@ -86,7 +93,7 @@ jobs:
           if-no-files-found: error
           retention-days: 5
 
-  # ── Build Windows (x64) ─────────────────────────────────────────────────
+  # ── Build Windows (x64) + Installer ─────────────────────────────────────
   build-windows:
     runs-on: windows-latest
     steps:
@@ -105,62 +112,147 @@ jobs:
       - name: Build Windows release
         run: flutter build windows --release
 
-      - name: Package Windows ZIP
+      - name: Find build output
+        id: build-path
         shell: pwsh
         run: |
-          $releasePath = "build\windows\x64\runner\Release"
-          if (Test-Path $releasePath) {
-            Compress-Archive -Path "$releasePath\*" -DestinationPath "VoiceInk-Windows-x64.zip"
+          if (Test-Path "build\windows\x64\runner\Release") {
+            echo "release_dir=build\windows\x64\runner\Release" >> $env:GITHUB_OUTPUT
+          } elseif (Test-Path "build\windows\runner\Release") {
+            echo "release_dir=build\windows\runner\Release" >> $env:GITHUB_OUTPUT
           } else {
-            # Fallback for older Flutter versions
-            $releasePath = "build\windows\runner\Release"
-            Compress-Archive -Path "$releasePath\*" -DestinationPath "VoiceInk-Windows-x64.zip"
+            Write-Error "Build output not found!"
+            exit 1
           }
 
-      - name: Upload Windows artifact
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          echo "C:\Program Files (x86)\Inno Setup 6" >> $env:GITHUB_PATH
+
+      - name: Extract version number
+        id: version
+        shell: pwsh
+        run: |
+          $ver = "${{ inputs.version }}" -replace '^v',''
+          echo "semver=$ver" >> $env:GITHUB_OUTPUT
+
+      - name: Build installer EXE
+        shell: pwsh
+        run: |
+          $releaseDir = "${{ steps.build-path.outputs.release_dir }}"
+          $absReleaseDir = (Resolve-Path $releaseDir).Path
+          & "iscc" "/DMyAppVersion=${{ steps.version.outputs.semver }}" "/DSourceDir=$absReleaseDir" "windows\installer\setup.iss"
+
+      - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
           name: windows-build
-          path: VoiceInk-Windows-x64.zip
+          path: VoiceInk-Windows-x64-Setup.exe
           if-no-files-found: error
           retention-days: 5
 
   # ── Create GitHub Release ───────────────────────────────────────────────
   release:
     needs: [build-macos, build-windows]
-    if: ${{ inputs.create_release }}
+    if: |
+      always() &&
+      inputs.create_release &&
+      (needs.build-macos.result == 'success' || needs.build-windows.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Download all artifacts
+      - name: Create tag if missing
+        run: |
+          TAG="${{ inputs.version }}"
+          if ! git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "VoiceInk $TAG"
+            git push origin "$TAG"
+            echo "✓ Created and pushed tag $TAG"
+          else
+            echo "Tag $TAG already exists"
+          fi
+
+      - name: Download macOS artifacts
+        if: needs.build-macos.result == 'success'
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          name: macos-build
+          path: artifacts/macos
+        continue-on-error: true
+
+      - name: Download Windows artifacts
+        if: needs.build-windows.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+          path: artifacts/windows
+        continue-on-error: true
 
       - name: List artifacts
-        run: find artifacts -type f -ls
-
-      - name: Determine artifact names
-        id: artifacts
         run: |
-          MACOS_FILE=$(find artifacts/macos-build -type f \( -name "*.dmg" -o -name "*.zip" \) | head -1)
-          WINDOWS_FILE=$(find artifacts/windows-build -type f -name "*.zip" | head -1)
-          echo "macos=$MACOS_FILE" >> "$GITHUB_OUTPUT"
-          echo "windows=$WINDOWS_FILE" >> "$GITHUB_OUTPUT"
-          echo "Found macOS: $MACOS_FILE"
-          echo "Found Windows: $WINDOWS_FILE"
+          echo "=== Artifact contents ==="
+          find artifacts -type f -ls 2>/dev/null || echo "No artifacts directory"
+
+      - name: Collect release files
+        id: files
+        run: |
+          MACOS_FILE=$(find artifacts/macos -type f \( -name "*.dmg" -o -name "*.zip" \) 2>/dev/null | head -1 || true)
+          WIN_FILE=$(find artifacts/windows -type f -name "*.exe" 2>/dev/null | head -1 || true)
+
+          MACOS_NAME="N/A"
+          WIN_NAME="N/A"
+          FILES=""
+
+          if [ -n "$MACOS_FILE" ] && [ -f "$MACOS_FILE" ]; then
+            MACOS_NAME=$(basename "$MACOS_FILE")
+            FILES="$MACOS_FILE"
+            echo "✓ macOS artifact: $MACOS_NAME"
+          fi
+
+          if [ -n "$WIN_FILE" ] && [ -f "$WIN_FILE" ]; then
+            WIN_NAME=$(basename "$WIN_FILE")
+            if [ -n "$FILES" ]; then
+              FILES=$(printf '%s\n%s' "$FILES" "$WIN_FILE")
+            else
+              FILES="$WIN_FILE"
+            fi
+            echo "✓ Windows artifact: $WIN_NAME"
+          fi
+
+          if [ -z "$FILES" ]; then
+            echo "::error::No release artifacts found!"
+            exit 1
+          fi
+
+          {
+            echo "files<<FILESEOF"
+            echo "$FILES"
+            echo "FILESEOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "macos_name=$MACOS_NAME" >> "$GITHUB_OUTPUT"
+          echo "windows_name=$WIN_NAME" >> "$GITHUB_OUTPUT"
+
+          echo "=== Files to upload ==="
+          echo "$FILES"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ inputs.version }}
           name: VoiceInk ${{ inputs.version }}
           draft: false
           prerelease: false
           make_latest: true
-          generate_release_notes: false
           body: |
             # VoiceInk ${{ inputs.version }}
 
@@ -170,20 +262,20 @@ jobs:
 
             | Platform | File | Requirements |
             |----------|------|--------------|
-            | 🍎 macOS | `VoiceInk-macOS-arm64.dmg` | Apple Silicon (M1/M2/M3/M4), macOS 12.0+ |
-            | 🪟 Windows | `VoiceInk-Windows-x64.zip` | Windows 10/11, 64-bit |
+            | 🍎 macOS | `${{ steps.files.outputs.macos_name }}` | Apple Silicon (M1/M2/M3/M4), macOS 12.0+ |
+            | 🪟 Windows | `${{ steps.files.outputs.windows_name }}` | Windows 10/11, 64-bit |
 
             ## macOS Installation
 
-            Since the app is not code-signed with an Apple Developer certificate:
             1. Download and open the DMG
             2. Drag the app to Applications
             3. **First launch:** Right-click the app → Open → Open
 
             ## Windows Installation
 
-            1. Download and extract the ZIP
-            2. Run `VoiceInk.exe`
+            1. Download and run `${{ steps.files.outputs.windows_name }}`
+            2. Follow the setup wizard
+            3. Launch VoiceInk from the Start Menu or Desktop shortcut
 
             ## Highlights
 
@@ -195,6 +287,4 @@ jobs:
             - Stats & streaks tracking
             - 100% offline — no data ever leaves your device
             - No accounts, no ads, no analytics
-          files: |
-            ${{ steps.artifacts.outputs.macos }}
-            ${{ steps.artifacts.outputs.windows }}
+          files: ${{ steps.files.outputs.files }}
