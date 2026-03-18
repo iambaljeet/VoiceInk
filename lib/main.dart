@@ -14,6 +14,10 @@ import 'services/stt_engine_manager.dart';
 import 'services/permission_service.dart';
 import 'services/hotkey_service.dart';
 import 'services/audio_device_service.dart';
+import 'services/database_service.dart';
+import 'services/dictionary_service.dart';
+import 'services/history_service.dart';
+import 'services/stats_service.dart';
 import 'config/app_config.dart';
 import 'ui/floating_indicator.dart';
 import 'ui/settings_screen.dart';
@@ -130,6 +134,14 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
       await _engineManager.init();
       await _modelManager.init();
       debugPrint('[VoiceInk] Models: ${_modelManager.downloadedModels.length}');
+
+      // Initialize database and new services
+      await DatabaseService.instance.initialize();
+      await DictionaryService.instance.init();
+      await HistoryService.instance.init();
+      await StatsService.instance.init();
+      debugPrint('[VoiceInk] Database & services initialized');
+
       await _dictation.init();
 
       final nativeAvail = await NativeSttService.checkAvailability();

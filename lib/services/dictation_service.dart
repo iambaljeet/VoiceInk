@@ -7,6 +7,10 @@ import 'whisper_service.dart';
 import 'text_cleanup_service.dart';
 import 'text_injection_service.dart';
 import 'model_manager.dart';
+import 'dictionary_service.dart';
+import 'history_service.dart';
+import 'stats_service.dart';
+import '../models/writing_style.dart';
 
 enum DictationState { idle, recording, processing }
 
@@ -34,6 +38,12 @@ class DictationService extends ChangeNotifier {
   bool get isRecording => _state == DictationState.recording;
   bool get isProcessing => _state == DictationState.processing;
 
+  WritingStyle writingStyle = WritingStyle.clean;
+
+  DictionaryService get dictionary => DictionaryService.instance;
+  HistoryService get history => HistoryService.instance;
+  StatsService get stats => StatsService.instance;
+
   DictationService({required this.modelManager});
 
   Future<void> init() async {
@@ -53,6 +63,10 @@ class DictationService extends ChangeNotifier {
     _cleanup.skipNonSpeech = prefs.getBool('cleanup_nonspeech') ?? true;
     _cleanup.convertPunctuation = prefs.getBool('cleanup_punctuation') ?? true;
     _cleanup.autoCapitalize = prefs.getBool('cleanup_capitalize') ?? true;
+
+    writingStyle = WritingStyle.fromString(prefs.getString('writing_style') ?? 'clean');
+    dictionary.isEnabled = prefs.getBool('dictionary_enabled') ?? false;
+    history.isEnabled = prefs.getBool('history_enabled') ?? false;
 
     final savedModel = prefs.getString('selected_model');
     if (savedModel != null && modelManager.isDownloaded(savedModel)) {
@@ -166,7 +180,7 @@ class DictationService extends ChangeNotifier {
               modelPath: modelManager.selectedModelPath!,
             );
 
-            final cleaned = _cleanup.process(rawText);
+            final cleaned = await _processTranscription(rawText);
             if (cleaned.isNotEmpty) {
               _lastTranscription += ((_lastTranscription.isNotEmpty) ? ' ' : '') + cleaned;
               notifyListeners();
@@ -216,7 +230,7 @@ class DictationService extends ChangeNotifier {
             audioPath: audioPath,
             modelPath: modelManager.selectedModelPath!,
           );
-          final cleaned = _cleanup.process(rawText);
+          final cleaned = await _processTranscription(rawText);
           if (cleaned.isNotEmpty) {
             await _injection.injectText('$cleaned ');
           }
@@ -245,12 +259,48 @@ class DictationService extends ChangeNotifier {
     await prefs.setBool('cleanup_nonspeech', _cleanup.skipNonSpeech);
     await prefs.setBool('cleanup_punctuation', _cleanup.convertPunctuation);
     await prefs.setBool('cleanup_capitalize', _cleanup.autoCapitalize);
+    await prefs.setString('writing_style', writingStyle.toStorageString());
+    await prefs.setBool('dictionary_enabled', dictionary.isEnabled);
+    await prefs.setBool('history_enabled', history.isEnabled);
     if (modelManager.selectedModelId != null) {
       await prefs.setString('selected_model', modelManager.selectedModelId!);
     }
   }
 
   TextCleanupService get cleanup => _cleanup;
+
+  /// Full post-transcription pipeline: cleanup → writing style → dictionary → history/stats.
+  Future<String> _processTranscription(String rawText, {int durationMs = 0}) async {
+    // 1. Standard cleanup (fillers, non-speech, punctuation, capitalize)
+    //    Skip cleanup entirely for Verbatim style
+    String cleaned;
+    if (writingStyle == WritingStyle.verbatim) {
+      cleaned = rawText.trim();
+    } else {
+      cleaned = _cleanup.process(rawText);
+    }
+
+    // 2. Writing style transform (formal, chat, etc.)
+    cleaned = writingStyle.apply(cleaned);
+
+    // 3. Dictionary replacements (fuzzy matching, symbol shortcuts)
+    cleaned = dictionary.applyReplacements(cleaned);
+
+    // 4. Save to history (if enabled)
+    final wordCount = cleaned.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+    await history.saveTranscription(
+      rawText: rawText,
+      cleanedText: cleaned,
+      wordCount: wordCount,
+      durationMs: durationMs,
+      modelUsed: modelManager.selectedModelId,
+    );
+
+    // 5. Update stats
+    await stats.recordTranscription(wordCount: wordCount, durationMs: durationMs);
+
+    return cleaned;
+  }
 
   @override
   void dispose() {
