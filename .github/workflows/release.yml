@@ -1,5 +1,6 @@
 # VoiceInk — Manual Release Workflow
 # Builds macOS DMG + Windows Setup EXE, then publishes a GitHub Release.
+# Supports: CI builds, local pre-uploaded builds, or mix of both.
 # Trigger: Manual only (workflow_dispatch) — never runs on push/PR.
 
 name: Release
@@ -16,6 +17,22 @@ on:
         required: true
         type: boolean
         default: true
+      build_macos:
+        description: 'Build macOS DMG in CI'
+        type: boolean
+        default: true
+      build_windows:
+        description: 'Build Windows EXE in CI'
+        type: boolean
+        default: true
+      use_local_macos:
+        description: 'Use pre-uploaded macOS build (from local-builds tag)'
+        type: boolean
+        default: false
+      use_local_windows:
+        description: 'Use pre-uploaded Windows build (from local-builds tag)'
+        type: boolean
+        default: false
 
 concurrency:
   group: release-${{ github.ref }}
@@ -27,6 +44,7 @@ permissions:
 jobs:
   # ── Build macOS (Apple Silicon) ──────────────────────────────────────────
   build-macos:
+    if: inputs.build_macos && !inputs.use_local_macos
     runs-on: macos-14
     steps:
       - name: Checkout
@@ -45,6 +63,25 @@ jobs:
         working-directory: macos
         run: pod install
 
+      - name: Patch Swift concurrency for Xcode 16+
+        working-directory: macos
+        run: |
+          echo "Patching all Pod xcconfig files for SWIFT_STRICT_CONCURRENCY..."
+          find Pods/Target\ Support\ Files -name '*.xcconfig' | while IFS= read -r f; do
+            if ! grep -q 'SWIFT_STRICT_CONCURRENCY' "$f"; then
+              echo 'SWIFT_STRICT_CONCURRENCY = minimal' >> "$f"
+              echo "  Patched: $f"
+            fi
+          done
+          echo "Done."
+
+      - name: Extract version number
+        id: version
+        run: |
+          VER="${{ inputs.version }}"
+          VER="${VER#v}"
+          echo "semver=$VER" >> "$GITHUB_OUTPUT"
+
       - name: Build macOS release
         run: flutter build macos --release
 
@@ -62,7 +99,8 @@ jobs:
         run: |
           brew install create-dmg
           APP_NAME="VoiceInk"
-          DMG_NAME="${APP_NAME}-macOS-arm64.dmg"
+          VER="${{ steps.version.outputs.semver }}"
+          DMG_NAME="${APP_NAME}-${VER}-macOS-arm64.dmg"
           APP_BUNDLE=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
           APP_BASENAME=$(basename "$APP_BUNDLE")
 
@@ -80,7 +118,7 @@ jobs:
           if [ ! -f "$DMG_NAME" ]; then
             echo "::warning::DMG creation failed, creating ZIP instead"
             cd build/macos/Build/Products/Release
-            zip -r "${GITHUB_WORKSPACE}/${APP_NAME}-macOS-arm64.zip" "$APP_BASENAME"
+            zip -r "${GITHUB_WORKSPACE}/${APP_NAME}-${VER}-macOS-arm64.zip" "$APP_BASENAME"
           fi
 
       - name: Upload macOS artifact
@@ -88,13 +126,14 @@ jobs:
         with:
           name: macos-build
           path: |
-            VoiceInk-macOS-arm64.dmg
-            VoiceInk-macOS-arm64.zip
+            VoiceInk-*-macOS-arm64.dmg
+            VoiceInk-*-macOS-arm64.zip
           if-no-files-found: error
           retention-days: 5
 
   # ── Build Windows (x64) + Installer ─────────────────────────────────────
   build-windows:
+    if: inputs.build_windows && !inputs.use_local_windows
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -143,13 +182,14 @@ jobs:
         run: |
           $releaseDir = "${{ steps.build-path.outputs.release_dir }}"
           $absReleaseDir = (Resolve-Path $releaseDir).Path
-          & "iscc" "/DMyAppVersion=${{ steps.version.outputs.semver }}" "/DSourceDir=$absReleaseDir" "windows\installer\setup.iss"
+          $ver = "${{ steps.version.outputs.semver }}"
+          & "iscc" "/DMyAppVersion=$ver" "/DSourceDir=$absReleaseDir" "/DMyOutputFilename=VoiceInk-$ver-Windows-x64-Setup" "windows\installer\setup.iss"
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
           name: windows-build
-          path: VoiceInk-Windows-x64-Setup.exe
+          path: VoiceInk-*-Windows-x64-Setup.exe
           if-no-files-found: error
           retention-days: 5
 
@@ -158,14 +198,20 @@ jobs:
     needs: [build-macos, build-windows]
     if: |
       always() &&
-      inputs.create_release &&
-      (needs.build-macos.result == 'success' || needs.build-windows.result == 'success')
+      inputs.create_release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Extract version number
+        id: version
+        run: |
+          VER="${{ inputs.version }}"
+          VER="${VER#v}"
+          echo "semver=$VER" >> "$GITHUB_OUTPUT"
 
       - name: Create tag if missing
         run: |
@@ -180,21 +226,55 @@ jobs:
             echo "Tag $TAG already exists"
           fi
 
-      - name: Download macOS artifacts
-        if: needs.build-macos.result == 'success'
+      - name: Download CI macOS artifacts
+        if: inputs.build_macos && !inputs.use_local_macos && needs.build-macos.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: macos-build
           path: artifacts/macos
         continue-on-error: true
 
-      - name: Download Windows artifacts
-        if: needs.build-windows.result == 'success'
+      - name: Download CI Windows artifacts
+        if: inputs.build_windows && !inputs.use_local_windows && needs.build-windows.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: windows-build
           path: artifacts/windows
         continue-on-error: true
+
+      - name: Download local macOS build
+        if: inputs.use_local_macos
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p artifacts/macos
+          echo "Downloading macOS build from 'local-builds' release..."
+          if gh release download local-builds \
+              --repo "${{ github.repository }}" \
+              --pattern "VoiceInk-*-macOS-arm64.*" \
+              --dir artifacts/macos 2>/dev/null; then
+            echo "✓ Downloaded local macOS build"
+            ls -la artifacts/macos/
+          else
+            echo "::warning::No macOS build found in 'local-builds' release"
+          fi
+
+      - name: Download local Windows build
+        if: inputs.use_local_windows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p artifacts/windows
+          echo "Downloading Windows build from 'local-builds' release..."
+          if gh release download local-builds \
+              --repo "${{ github.repository }}" \
+              --pattern "VoiceInk-*-Windows-x64-Setup.*" \
+              --dir artifacts/windows 2>/dev/null; then
+            echo "✓ Downloaded local Windows build"
+            ls -la artifacts/windows/
+          else
+            echo "::warning::No Windows build found in 'local-builds' release"
+          fi
 
       - name: List artifacts
         run: |

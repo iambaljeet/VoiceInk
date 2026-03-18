@@ -1,2 +1,5 @@
 #include "../../Flutter/Flutter-Release.xcconfig"
 #include "Warnings.xcconfig"
+
+// Fix speech_to_text Swift concurrency error on Xcode 16+
+SWIFT_STRICT_CONCURRENCY = minimal

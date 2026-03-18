@@ -372,7 +372,7 @@ build_macos() {
     # Package as DMG or ZIP
     local artifact_name
     read_current_config
-    artifact_name="${CURRENT_APP_NAME:-VoiceInk}-macOS-arm64"
+    artifact_name="${CURRENT_APP_NAME:-VoiceInk}-${CURRENT_SEMVER}-macOS-arm64"
 
     if command -v create-dmg &>/dev/null; then
         header "Creating DMG"
@@ -425,7 +425,7 @@ build_windows() {
         read -rp "$(echo -e "${CYAN}Path to pre-built Windows ZIP${NC} (Enter to skip): ")" WIN_ZIP_PATH
         if [ -n "$WIN_ZIP_PATH" ] && [ -f "$WIN_ZIP_PATH" ]; then
             read_current_config
-            local artifact_name="${CURRENT_APP_NAME:-VoiceInk}-Windows-x64.zip"
+            local artifact_name="${CURRENT_APP_NAME:-VoiceInk}-${CURRENT_SEMVER}-Windows-x64-Setup.exe"
             cp "$WIN_ZIP_PATH" "${PROJECT_DIR}/${artifact_name}"
             WINDOWS_ARTIFACT="${PROJECT_DIR}/${artifact_name}"
             log "Windows artifact: ${artifact_name}"
@@ -441,7 +441,7 @@ build_windows() {
     log "Windows build complete."
 
     read_current_config
-    local artifact_name="${CURRENT_APP_NAME:-VoiceInk}-Windows-x64"
+    local artifact_name="${CURRENT_APP_NAME:-VoiceInk}-${CURRENT_SEMVER}-Windows-x64"
     local release_dir="build/windows/x64/runner/Release"
 
     if [ -d "$release_dir" ]; then
@@ -540,19 +540,24 @@ publish_github() {
     echo -e "${BOLD}How would you like to publish the release?${NC}"
     echo ""
     echo "  1) GitHub CLI (gh) — publish release now with local artifacts"
-    echo "  2) GitHub Actions  — trigger workflow (builds Windows automatically!)"
-    echo "  3) Skip publishing"
+    echo "  2) GitHub Actions  — trigger workflow (builds both platforms in CI)"
+    echo "  3) Upload local build + trigger Actions (use local macOS + CI Windows)"
+    echo "  4) Skip publishing"
     echo ""
-    read -rp "$(echo -e "${CYAN}Choose [1/2/3]:${NC} ")" PUB_METHOD
+    read -rp "$(echo -e "${CYAN}Choose [1/2/3/4]:${NC} ")" PUB_METHOD
 
     case "$PUB_METHOD" in
         1)
             publish_with_gh_cli "$tag" "$title" "$repo_slug" "${assets[@]}"
             ;;
         2)
-            trigger_release_workflow "$tag" "$repo_slug"
+            trigger_release_workflow "$tag" "$repo_slug" "true" "true" "false" "false"
             ;;
         3)
+            upload_local_builds "$repo_slug" "${assets[@]}"
+            trigger_release_workflow "$tag" "$repo_slug" "false" "true" "true" "false"
+            ;;
+        4)
             info "Skipped publishing. You can publish later with:"
             echo "  gh release create ${tag} --title '${title}' ${assets[*]:-}"
             ;;
@@ -607,6 +612,10 @@ publish_with_gh_cli() {
 
 trigger_release_workflow() {
     local tag="$1" repo_slug="$2"
+    local build_macos="${3:-true}"
+    local build_windows="${4:-true}"
+    local use_local_macos="${5:-false}"
+    local use_local_windows="${6:-false}"
 
     if command -v gh &>/dev/null; then
         # Check gh auth
@@ -616,17 +625,26 @@ trigger_release_workflow() {
         fi
 
         info "Triggering release workflow for tag ${tag}..."
+        echo "  build_macos=${build_macos}, build_windows=${build_windows}"
+        echo "  use_local_macos=${use_local_macos}, use_local_windows=${use_local_windows}"
+
         if gh workflow run release.yml \
             --repo "$repo_slug" \
             -f version="$tag" \
-            -f create_release=true 2>/dev/null; then
+            -f create_release=true \
+            -f build_macos="$build_macos" \
+            -f build_windows="$build_windows" \
+            -f use_local_macos="$use_local_macos" \
+            -f use_local_windows="$use_local_windows" 2>/dev/null; then
             log "Release workflow triggered! 🚀"
             echo "  → https://github.com/${repo_slug}/actions/workflows/release.yml"
             echo ""
             echo "  The workflow will:"
-            echo "    • Build macOS DMG (Apple Silicon)"
-            echo "    • Build Windows EXE/ZIP"
-            echo "    • Create GitHub Release with both artifacts"
+            [ "$build_macos" = "true" ]      && echo "    • Build macOS DMG in CI"
+            [ "$use_local_macos" = "true" ]  && echo "    • Use pre-uploaded macOS build"
+            [ "$build_windows" = "true" ]    && echo "    • Build Windows EXE in CI"
+            [ "$use_local_windows" = "true" ] && echo "    • Use pre-uploaded Windows build"
+            echo "    • Create GitHub Release with all artifacts"
         else
             warn "Could not trigger via CLI. Use the web UI instead:"
             echo "  → https://github.com/${repo_slug}/actions/workflows/release.yml"
@@ -640,9 +658,59 @@ trigger_release_workflow() {
         echo "  Click 'Run workflow' and enter:"
         echo "    Version tag: ${tag}"
         echo "    Create release: ✓"
-        echo ""
-        echo "  The workflow builds macOS + Windows and publishes the release automatically."
+        echo "    Build macOS: ${build_macos}"
+        echo "    Build Windows: ${build_windows}"
+        echo "    Use local macOS: ${use_local_macos}"
+        echo "    Use local Windows: ${use_local_windows}"
     fi
+}
+
+upload_local_builds() {
+    local repo_slug="$1"
+    shift
+    local assets=("$@")
+
+    if [ ${#assets[@]} -eq 0 ]; then
+        warn "No local artifacts to upload."
+        return
+    fi
+
+    if ! command -v gh &>/dev/null; then
+        err "'gh' CLI required for uploading. Install: brew install gh"
+        return 1
+    fi
+
+    if ! gh auth status &>/dev/null 2>&1; then
+        warn "GitHub CLI not authenticated. Running 'gh auth login'..."
+        gh auth login
+    fi
+
+    info "Uploading local builds to 'local-builds' staging release..."
+
+    # Create or update the local-builds release
+    if ! gh release view local-builds --repo "$repo_slug" &>/dev/null; then
+        gh release create local-builds \
+            --repo "$repo_slug" \
+            --title "Local Builds (staging)" \
+            --notes "Staging area for locally-built artifacts. Used by CI workflow." \
+            --prerelease 2>/dev/null || true
+    fi
+
+    # Delete old assets and upload new ones
+    for asset in "${assets[@]}"; do
+        local basename
+        basename=$(basename "$asset")
+        # Delete existing asset with same name (if any)
+        gh release delete-asset local-builds "$basename" \
+            --repo "$repo_slug" --yes 2>/dev/null || true
+        # Upload new asset
+        gh release upload local-builds "$asset" \
+            --repo "$repo_slug" --clobber
+        log "Uploaded: $basename"
+    done
+
+    log "Local builds uploaded to 'local-builds' release."
+    echo "  → https://github.com/${repo_slug}/releases/tag/local-builds"
 }
 
 # ─── Update website download links ───────────────────────────────────────────

@@ -17,6 +17,11 @@
   #define SourceDir "..\..\build\windows\x64\runner\Release"
 #endif
 
+; Output filename can be overridden via /DMyOutputFilename=...
+#ifndef MyOutputFilename
+  #define MyOutputFilename "VoiceInk-Windows-x64-Setup"
+#endif
+
 [Setup]
 AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 AppName={#MyAppName}
@@ -27,7 +32,7 @@ AppSupportURL={#MyAppURL}/issues
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
-OutputBaseFilename=VoiceInk-Windows-x64-Setup
+OutputBaseFilename={#MyOutputFilename}
 OutputDir=..\..\
 SetupIconFile=..\runner\resources\app_icon.ico
 Compression=lzma2/max
