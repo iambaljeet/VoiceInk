@@ -10,7 +10,6 @@ import '../services/audio_device_service.dart';
 import '../services/stats_service.dart';
 import 'onboarding_screen.dart';
 import 'dictionary_screen.dart';
-import 'history_screen.dart';
 
 import '../config/app_config.dart';
 
@@ -55,6 +54,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ── Stats & Streaks (top of settings) ──
+                _buildSectionHeader('Stats & Streaks'),
+                const SizedBox(height: 8),
+                _buildStatsSection(),
+                const SizedBox(height: 32),
+
                 // Engine selection
                 if (widget.engineManager != null) ...[
                   _buildSectionHeader('Speech Engine'),
@@ -228,50 +233,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 32),
-
-                // ── Transcription History ──
-                _buildSectionHeader('Transcription History'),
-                const SizedBox(height: 8),
-                const Text(
-                  'Save and browse your past transcriptions.',
-                  style: TextStyle(color: Colors.white60, fontSize: 13),
-                ),
-                const SizedBox(height: 12),
-                _buildToggle(
-                  'Enable history',
-                  'Automatically save all transcriptions for later review.',
-                  widget.dictationService.history.isEnabled,
-                  (v) {
-                    setState(() {
-                      widget.dictationService.history.isEnabled = v;
-                    });
-                    widget.dictationService.savePreferences();
-                  },
-                ),
-                const SizedBox(height: 8),
-                Center(
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => const HistoryScreen(),
-                      ));
-                    },
-                    icon: const Icon(Icons.history, size: 16),
-                    label: const Text('View History', style: TextStyle(fontSize: 13)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF3B82F6),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 32),
-
-                // ── Stats & Streaks ──
-                _buildSectionHeader('Stats & Streaks'),
-                const SizedBox(height: 8),
-                _buildStatsSection(),
                 const SizedBox(height: 32),
 
                 // Only show keyboard shortcut & mic sections on desktop
@@ -681,6 +642,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(width: 12),
               _buildStatTile('Today', '${stats.transcriptionsToday}', 'transcriptions'),
             ],
+          ),
+          const SizedBox(height: 16),
+          Center(
+            child: TextButton.icon(
+              onPressed: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: const Color(0xFF1a1a2e),
+                    title: const Text('Reset Stats?', style: TextStyle(color: Colors.white)),
+                    content: const Text(
+                      'This will reset all word counts, streaks, and transcription counts to zero.',
+                      style: TextStyle(color: Colors.white60),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(false),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(true),
+                        child: const Text('Reset', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await stats.resetAll();
+                  setState(() {});
+                }
+              },
+              icon: const Icon(Icons.restart_alt, size: 16, color: Colors.white38),
+              label: const Text('Reset Stats', style: TextStyle(color: Colors.white38, fontSize: 12)),
+            ),
           ),
         ],
       ),

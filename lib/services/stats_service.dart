@@ -113,6 +113,20 @@ class StatsService {
     };
   }
 
+  /// Reset all stats to zero.
+  Future<void> resetAll() async {
+    _cache[_kWordsToday] = '0';
+    _cache[_kWordsThisMonth] = '0';
+    _cache[_kWordsTotal] = '0';
+    _cache[_kCurrentStreak] = '0';
+    _cache[_kBestStreak] = '0';
+    _cache[_kTranscriptionsToday] = '0';
+    _cache[_kLastActiveDate] = '';
+    _cache[_kLastActiveMonth] = '';
+    await _saveAll();
+    debugPrint('[StatsService] All stats reset to zero');
+  }
+
   // --- Streak logic ---
 
   void _updateStreak(String lastDateStr) {

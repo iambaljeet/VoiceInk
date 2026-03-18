@@ -8,7 +8,7 @@ class DatabaseService {
   static final instance = DatabaseService._();
 
   static const _databaseName = 'voiceink.db';
-  static const _databaseVersion = 1;
+  static const _databaseVersion = 2;
 
   Database? _database;
 
@@ -32,6 +32,7 @@ class DatabaseService {
       options: OpenDatabaseOptions(
         version: _databaseVersion,
         onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
       ),
     );
   }
@@ -48,24 +49,18 @@ class DatabaseService {
     ''');
 
     await db.execute('''
-      CREATE TABLE transcription_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        raw_text TEXT NOT NULL,
-        cleaned_text TEXT NOT NULL,
-        word_count INTEGER NOT NULL DEFAULT 0,
-        duration_ms INTEGER NOT NULL DEFAULT 0,
-        model_used TEXT,
-        language TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      )
-    ''');
-
-    await db.execute('''
       CREATE TABLE user_stats (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       )
     ''');
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Remove transcription_history table (history feature removed)
+      await db.execute('DROP TABLE IF EXISTS transcription_history');
+    }
   }
 
   Future<void> close() async {

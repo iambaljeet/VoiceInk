@@ -8,7 +8,6 @@ import 'text_cleanup_service.dart';
 import 'text_injection_service.dart';
 import 'model_manager.dart';
 import 'dictionary_service.dart';
-import 'history_service.dart';
 import 'stats_service.dart';
 import '../models/writing_style.dart';
 
@@ -41,7 +40,6 @@ class DictationService extends ChangeNotifier {
   WritingStyle writingStyle = WritingStyle.clean;
 
   DictionaryService get dictionary => DictionaryService.instance;
-  HistoryService get history => HistoryService.instance;
   StatsService get stats => StatsService.instance;
 
   DictationService({required this.modelManager});
@@ -66,7 +64,6 @@ class DictationService extends ChangeNotifier {
 
     writingStyle = WritingStyle.fromString(prefs.getString('writing_style') ?? 'clean');
     dictionary.isEnabled = prefs.getBool('dictionary_enabled') ?? false;
-    history.isEnabled = prefs.getBool('history_enabled') ?? false;
 
     final savedModel = prefs.getString('selected_model');
     if (savedModel != null && modelManager.isDownloaded(savedModel)) {
@@ -261,7 +258,6 @@ class DictationService extends ChangeNotifier {
     await prefs.setBool('cleanup_capitalize', _cleanup.autoCapitalize);
     await prefs.setString('writing_style', writingStyle.toStorageString());
     await prefs.setBool('dictionary_enabled', dictionary.isEnabled);
-    await prefs.setBool('history_enabled', history.isEnabled);
     if (modelManager.selectedModelId != null) {
       await prefs.setString('selected_model', modelManager.selectedModelId!);
     }
@@ -269,8 +265,8 @@ class DictationService extends ChangeNotifier {
 
   TextCleanupService get cleanup => _cleanup;
 
-  /// Full post-transcription pipeline: cleanup → writing style → dictionary → history/stats.
-  Future<String> _processTranscription(String rawText, {int durationMs = 0}) async {
+  /// Full post-transcription pipeline: cleanup → writing style → dictionary → stats.
+  Future<String> _processTranscription(String rawText) async {
     // 1. Standard cleanup (fillers, non-speech, punctuation, capitalize)
     //    Skip cleanup entirely for Verbatim style
     String cleaned;
@@ -286,18 +282,9 @@ class DictationService extends ChangeNotifier {
     // 3. Dictionary replacements (fuzzy matching, symbol shortcuts)
     cleaned = dictionary.applyReplacements(cleaned);
 
-    // 4. Save to history (if enabled)
+    // 4. Update stats
     final wordCount = cleaned.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
-    await history.saveTranscription(
-      rawText: rawText,
-      cleanedText: cleaned,
-      wordCount: wordCount,
-      durationMs: durationMs,
-      modelUsed: modelManager.selectedModelId,
-    );
-
-    // 5. Update stats
-    await stats.recordTranscription(wordCount: wordCount, durationMs: durationMs);
+    await stats.recordTranscription(wordCount: wordCount);
 
     return cleaned;
   }
