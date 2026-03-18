@@ -1,0 +1,197 @@
+# VoiceInk — Manual Release Workflow
+# Builds macOS DMG + Windows ZIP, then publishes a GitHub Release.
+# Trigger: Manual only (workflow_dispatch) — never runs on push/PR.
+
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. v1.0.0)'
+        required: true
+        type: string
+      create_release:
+        description: 'Create GitHub Release with artifacts'
+        required: true
+        type: boolean
+        default: true
+
+# Cancel any in-progress runs for the same workflow
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Build macOS (Apple Silicon) ──────────────────────────────────────────
+  build-macos:
+    runs-on: macos-14  # M1 runner (Apple Silicon)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS release
+        run: flutter build macos --release
+
+      - name: Code sign (ad-hoc)
+        run: |
+          codesign --deep --force --sign - \
+            build/macos/Build/Products/Release/voice_ink.app
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg
+          APP_NAME="VoiceInk"
+          DMG_NAME="${APP_NAME}-macOS-arm64.dmg"
+
+          create-dmg \
+            --volname "$APP_NAME" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "voice_ink.app" 175 190 \
+            --app-drop-link 425 190 \
+            "$DMG_NAME" \
+            "build/macos/Build/Products/Release/voice_ink.app" || true
+
+          # Fallback to ZIP if DMG failed
+          if [ ! -f "$DMG_NAME" ]; then
+            echo "DMG creation failed, creating ZIP instead..."
+            cd build/macos/Build/Products/Release
+            zip -r "${GITHUB_WORKSPACE}/${APP_NAME}-macOS-arm64.zip" voice_ink.app
+          fi
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build
+          path: |
+            VoiceInk-macOS-arm64.dmg
+            VoiceInk-macOS-arm64.zip
+          if-no-files-found: error
+          retention-days: 5
+
+  # ── Build Windows (x64) ─────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      - name: Package Windows ZIP
+        shell: pwsh
+        run: |
+          $releasePath = "build\windows\x64\runner\Release"
+          if (Test-Path $releasePath) {
+            Compress-Archive -Path "$releasePath\*" -DestinationPath "VoiceInk-Windows-x64.zip"
+          } else {
+            # Fallback for older Flutter versions
+            $releasePath = "build\windows\runner\Release"
+            Compress-Archive -Path "$releasePath\*" -DestinationPath "VoiceInk-Windows-x64.zip"
+          }
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: VoiceInk-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 5
+
+  # ── Create GitHub Release ───────────────────────────────────────────────
+  release:
+    needs: [build-macos, build-windows]
+    if: ${{ inputs.create_release }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f -ls
+
+      - name: Determine artifact names
+        id: artifacts
+        run: |
+          MACOS_FILE=$(find artifacts/macos-build -type f \( -name "*.dmg" -o -name "*.zip" \) | head -1)
+          WINDOWS_FILE=$(find artifacts/windows-build -type f -name "*.zip" | head -1)
+          echo "macos=$MACOS_FILE" >> "$GITHUB_OUTPUT"
+          echo "windows=$WINDOWS_FILE" >> "$GITHUB_OUTPUT"
+          echo "Found macOS: $MACOS_FILE"
+          echo "Found Windows: $WINDOWS_FILE"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: VoiceInk ${{ inputs.version }}
+          draft: false
+          prerelease: false
+          make_latest: true
+          generate_release_notes: false
+          body: |
+            # VoiceInk ${{ inputs.version }}
+
+            **Local, on-device voice dictation for macOS & Windows** — 100% free, 100% private.
+
+            ## Downloads
+
+            | Platform | File | Requirements |
+            |----------|------|--------------|
+            | 🍎 macOS | `VoiceInk-macOS-arm64.dmg` | Apple Silicon (M1/M2/M3/M4), macOS 12.0+ |
+            | 🪟 Windows | `VoiceInk-Windows-x64.zip` | Windows 10/11, 64-bit |
+
+            ## macOS Installation
+
+            Since the app is not code-signed with an Apple Developer certificate:
+            1. Download and open the DMG
+            2. Drag the app to Applications
+            3. **First launch:** Right-click the app → Open → Open
+
+            ## Windows Installation
+
+            1. Download and extract the ZIP
+            2. Run `voice_ink.exe`
+
+            ## Highlights
+
+            - Push-to-talk voice dictation with configurable hotkeys
+            - 9 Whisper AI models (75 MB to 1.6 GB)
+            - 34 language support
+            - Custom dictionary with auto-correction
+            - Writing styles (Verbatim, Clean, Formal, Chat)
+            - Stats & streaks tracking
+            - 100% offline — no data ever leaves your device
+            - No accounts, no ads, no analytics
+          files: |
+            ${{ steps.artifacts.outputs.macos }}
+            ${{ steps.artifacts.outputs.windows }}

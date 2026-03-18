@@ -10,37 +10,45 @@ The script handles everything interactively. Choose from:
 
 | Option | What it does |
 |--------|-------------|
-| **1) Build & Publish** | Build macOS DMG → package Windows → publish to GitHub Releases → update website → push |
+| **1) Build & Publish** | Build macOS DMG → publish to GitHub Releases (via CLI or Actions workflow) |
 | **2) Edit App Info & Publish** | Change name/version/icons → resize automatically → then do everything from option 1 |
 | **3) Just generate icons** | Resize a single PNG into all platform icon sizes |
 
+When publishing, you choose between:
+- **GitHub CLI (`gh`)** — publish immediately from your machine with local artifacts
+- **GitHub Actions** — trigger the workflow to build **both macOS + Windows** automatically in the cloud
+
 ---
 
-## What the Script Does
+## GitHub Actions Workflow (Recommended)
 
-### Build & Sign macOS
+The `release.yml` workflow builds both platforms automatically. **It only runs when you manually trigger it** — never on push or PR.
 
-1. Runs `flutter build macos --release`
-2. Code-signs the `.app` bundle:
-   - **Developer ID** if available (proper distribution)
-   - **Ad-hoc** otherwise (users need right-click → Open on first launch)
-3. Creates a DMG with `create-dmg` (falls back to ZIP if not installed)
+### How to trigger
 
-### Package Windows
+**Option A — From the publish script:**
+```bash
+./publish.sh
+# Choose 1) Build & Publish → 2) GitHub Actions
+```
 
-- On macOS: prompts for a pre-built Windows ZIP (can't cross-compile)
-- On Windows: runs `flutter build windows --release` and ZIPs the output
+**Option B — From the GitHub web UI:**
+1. Go to [Actions → Release](https://github.com/iambaljeet/VoiceInk/actions/workflows/release.yml)
+2. Click **"Run workflow"**
+3. Enter the version tag (e.g., `v1.0.0`)
+4. Check "Create GitHub Release"
+5. Click **"Run workflow"**
 
-### Publish to GitHub
+**Option C — From the CLI:**
+```bash
+gh workflow run release.yml -f version=v1.0.0 -f create_release=true
+```
 
-- Creates a git tag (`v1.0.0`)
-- Publishes a GitHub Release with release notes via `gh` CLI
-- Falls back to manual instructions if `gh` isn't installed
+### What the workflow does
 
-### Update Website
-
-- `docs/index.html` uses `/releases/latest` links (auto-redirects to newest release)
-- No manual link updates needed — it just works
+1. **macOS job** (macos-14 Apple Silicon runner): `flutter build macos --release` → ad-hoc code sign → create DMG
+2. **Windows job** (windows-latest runner): `flutter build windows --release` → ZIP the output
+3. **Release job**: Downloads both artifacts → creates GitHub Release with both files attached
 
 ---
 
@@ -66,6 +74,18 @@ From a single source PNG, the script generates:
 **Windows** (`windows/runner/resources/app_icon.ico`):
 - Multi-resolution `.ico` with 16, 32, 48, 64, 128, 256px
 - Requires `pip3 install Pillow` for .ico generation
+
+### Icon Background Options
+
+When generating icons, you'll be prompted for a background mode:
+
+| Input | Effect |
+|-------|--------|
+| **Hex color** (e.g. `#FFFFFF`, `#1a1a2e`) | Fills the background with that color, centers your icon with 10% padding (macOS style) |
+| **`fill`** | Stretches the icon to fill the entire space (no padding, no background) |
+| **Enter** (blank) | Keeps the icon as-is with transparency |
+
+This solves the issue where a logo only appears in the center — use a background color to fill the entire icon space.
 
 ---
 
