@@ -43,49 +43,39 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ inputs.release_tag }}"
+          REPO_URL="https://github.com/${{ github.repository }}"
 
           if [ -z "$TAG" ]; then
             echo "No tag specified — fetching latest release..."
-            RELEASE_JSON=$(gh api repos/${{ github.repository }}/releases/latest)
-          else
-            echo "Fetching release for tag: $TAG"
-            RELEASE_JSON=$(gh api repos/${{ github.repository }}/releases/tags/$TAG)
+            TAG=$(gh api repos/${{ github.repository }}/releases/latest --jq '.tag_name')
           fi
 
-          TAG_NAME=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
-          echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-          # Extract macOS download URL (.dmg preferred, fallback .zip)
-          MAC_URL=$(echo "$RELEASE_JSON" | jq -r '
-            .assets[]
-            | select(.name | test("macOS.*arm64.*\\.dmg$"))
-            | .browser_download_url' | head -1)
+          # Strip 'v' prefix for filename
+          VER="${TAG#v}"
 
-          if [ -z "$MAC_URL" ] || [ "$MAC_URL" = "null" ]; then
-            MAC_URL=$(echo "$RELEASE_JSON" | jq -r '
-              .assets[]
-              | select(.name | test("macOS.*arm64.*\\.zip$"))
-              | .browser_download_url' | head -1)
+          # Construct direct download URLs from known naming convention
+          MAC_URL="${REPO_URL}/releases/download/${TAG}/VoiceInk-${VER}-macOS-arm64.dmg"
+          WIN_URL="${REPO_URL}/releases/download/${TAG}/VoiceInk-${VER}-Windows-x64-Setup.exe"
+
+          # Verify assets exist via API (non-blocking)
+          RELEASE_JSON=$(gh api repos/${{ github.repository }}/releases/tags/$TAG 2>/dev/null || echo '{}')
+          ASSET_COUNT=$(echo "$RELEASE_JSON" | jq '.assets | length' 2>/dev/null || echo 0)
+          echo "Release $TAG has $ASSET_COUNT assets"
+
+          # If API has assets, prefer the actual browser_download_url
+          if [ "$ASSET_COUNT" -gt 0 ]; then
+            API_MAC=$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select(.name | test("macOS.*arm64.*\\.(dmg|zip)$"))] | first | .browser_download_url // empty')
+            API_WIN=$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select(.name | test("Windows.*x64.*Setup.*\\.exe$"))] | first | .browser_download_url // empty')
+            [ -n "$API_MAC" ] && MAC_URL="$API_MAC"
+            [ -n "$API_WIN" ] && WIN_URL="$API_WIN"
           fi
-
-          # Extract Windows download URL (.exe)
-          WIN_URL=$(echo "$RELEASE_JSON" | jq -r '
-            .assets[]
-            | select(.name | test("Windows.*x64.*Setup.*\\.exe$"))
-            | .browser_download_url' | head -1)
-
-          # Fallback to releases/latest page if no direct links found
-          REPO_URL="https://github.com/${{ github.repository }}"
-          MAC_URL="${MAC_URL:-${REPO_URL}/releases/latest}"
-          WIN_URL="${WIN_URL:-${REPO_URL}/releases/latest}"
-
-          [ "$MAC_URL" = "null" ] && MAC_URL="${REPO_URL}/releases/latest"
-          [ "$WIN_URL" = "null" ] && WIN_URL="${REPO_URL}/releases/latest"
 
           echo "mac_url=$MAC_URL" >> "$GITHUB_OUTPUT"
           echo "win_url=$WIN_URL" >> "$GITHUB_OUTPUT"
 
-          echo "✓ Release: $TAG_NAME"
+          echo "✓ Release: $TAG"
           echo "  macOS:   $MAC_URL"
           echo "  Windows: $WIN_URL"
 
@@ -101,16 +91,11 @@ jobs:
             exit 1
           fi
 
-          # Update Mac download links (identified by id attributes)
-          sed -i "s|id=\"download-mac-hero\" href=\"[^\"]*\"|id=\"download-mac-hero\" href=\"${MAC_URL}\"|g" "$FILE"
-          sed -i "s|id=\"download-mac-cta\" href=\"[^\"]*\"|id=\"download-mac-cta\" href=\"${MAC_URL}\"|g" "$FILE"
-
-          # Update Windows download links
-          sed -i "s|id=\"download-win-hero\" href=\"[^\"]*\"|id=\"download-win-hero\" href=\"${WIN_URL}\"|g" "$FILE"
-          sed -i "s|id=\"download-win-cta\" href=\"[^\"]*\"|id=\"download-win-cta\" href=\"${WIN_URL}\"|g" "$FILE"
-
-          # Update any visible version string on the page
-          sed -i "s|v[0-9]\+\.[0-9]\+\.[0-9]\+|${TAG}|g" "$FILE"
+          # Update links by matching lines with the id, then replacing href on that line
+          sed -i '/id="download-mac-hero"/s|href="[^"]*"|href="'"$MAC_URL"'"|' "$FILE"
+          sed -i '/id="download-mac-cta"/s|href="[^"]*"|href="'"$MAC_URL"'"|' "$FILE"
+          sed -i '/id="download-win-hero"/s|href="[^"]*"|href="'"$WIN_URL"'"|' "$FILE"
+          sed -i '/id="download-win-cta"/s|href="[^"]*"|href="'"$WIN_URL"'"|' "$FILE"
 
           echo "=== Verify updated links ==="
           grep -n 'id="download-' "$FILE"
