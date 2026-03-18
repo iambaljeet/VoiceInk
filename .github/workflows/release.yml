@@ -51,6 +51,10 @@ jobs:
       - name: Code sign (ad-hoc)
         run: |
           APP_BUNDLE=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
+          if [ -z "$APP_BUNDLE" ]; then
+            echo "ERROR: No .app bundle found!"
+            exit 1
+          fi
           echo "Signing: $APP_BUNDLE"
           codesign --deep --force --sign - "$APP_BUNDLE"
 
@@ -74,7 +78,7 @@ jobs:
 
           # Fallback to ZIP if DMG creation failed
           if [ ! -f "$DMG_NAME" ]; then
-            echo "DMG creation failed, creating ZIP instead..."
+            echo "::warning::DMG creation failed, creating ZIP instead"
             cd build/macos/Build/Products/Release
             zip -r "${GITHUB_WORKSPACE}/${APP_NAME}-macOS-arm64.zip" "$APP_BASENAME"
           fi
@@ -139,7 +143,7 @@ jobs:
         run: |
           $releaseDir = "${{ steps.build-path.outputs.release_dir }}"
           $absReleaseDir = (Resolve-Path $releaseDir).Path
-          iscc /DMyAppVersion="${{ steps.version.outputs.semver }}" /DSourceDir="$absReleaseDir" "windows\installer\setup.iss"
+          & "iscc" "/DMyAppVersion=${{ steps.version.outputs.semver }}" "/DSourceDir=$absReleaseDir" "windows\installer\setup.iss"
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
@@ -152,8 +156,7 @@ jobs:
   # ── Create GitHub Release ───────────────────────────────────────────────
   release:
     needs: [build-macos, build-windows]
-    # Run if at least one build succeeded AND release was requested
-    if: >-
+    if: |
       always() &&
       inputs.create_release &&
       (needs.build-macos.result == 'success' || needs.build-windows.result == 'success')
@@ -183,6 +186,7 @@ jobs:
         with:
           name: macos-build
           path: artifacts/macos
+        continue-on-error: true
 
       - name: Download Windows artifacts
         if: needs.build-windows.result == 'success'
@@ -190,42 +194,54 @@ jobs:
         with:
           name: windows-build
           path: artifacts/windows
+        continue-on-error: true
 
       - name: List artifacts
-        run: find artifacts -type f -ls 2>/dev/null || echo "No artifacts found"
+        run: |
+          echo "=== Artifact contents ==="
+          find artifacts -type f -ls 2>/dev/null || echo "No artifacts directory"
 
       - name: Collect release files
         id: files
         run: |
-          RELEASE_FILES=""
-
-          MACOS=$(find artifacts/macos -type f \( -name "*.dmg" -o -name "*.zip" \) 2>/dev/null | head -1 || true)
-          WIN=$(find artifacts/windows -type f -name "*.exe" 2>/dev/null | head -1 || true)
+          MACOS_FILE=$(find artifacts/macos -type f \( -name "*.dmg" -o -name "*.zip" \) 2>/dev/null | head -1 || true)
+          WIN_FILE=$(find artifacts/windows -type f -name "*.exe" 2>/dev/null | head -1 || true)
 
           MACOS_NAME="N/A"
           WIN_NAME="N/A"
+          FILES=""
 
-          if [ -n "$MACOS" ] && [ -f "$MACOS" ]; then
-            RELEASE_FILES="$RELEASE_FILES
-          $MACOS"
-            MACOS_NAME=$(basename "$MACOS")
-            echo "✓ macOS: $MACOS_NAME"
+          if [ -n "$MACOS_FILE" ] && [ -f "$MACOS_FILE" ]; then
+            MACOS_NAME=$(basename "$MACOS_FILE")
+            FILES="$MACOS_FILE"
+            echo "✓ macOS artifact: $MACOS_NAME"
           fi
 
-          if [ -n "$WIN" ] && [ -f "$WIN" ]; then
-            RELEASE_FILES="$RELEASE_FILES
-          $WIN"
-            WIN_NAME=$(basename "$WIN")
-            echo "✓ Windows: $WIN_NAME"
+          if [ -n "$WIN_FILE" ] && [ -f "$WIN_FILE" ]; then
+            WIN_NAME=$(basename "$WIN_FILE")
+            if [ -n "$FILES" ]; then
+              FILES=$(printf '%s\n%s' "$FILES" "$WIN_FILE")
+            else
+              FILES="$WIN_FILE"
+            fi
+            echo "✓ Windows artifact: $WIN_NAME"
+          fi
+
+          if [ -z "$FILES" ]; then
+            echo "::error::No release artifacts found!"
+            exit 1
           fi
 
           {
             echo "files<<FILESEOF"
-            echo "$RELEASE_FILES"
+            echo "$FILES"
             echo "FILESEOF"
           } >> "$GITHUB_OUTPUT"
           echo "macos_name=$MACOS_NAME" >> "$GITHUB_OUTPUT"
           echo "windows_name=$WIN_NAME" >> "$GITHUB_OUTPUT"
+
+          echo "=== Files to upload ==="
+          echo "$FILES"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
