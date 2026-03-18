@@ -368,3 +368,12 @@ jobs:
             - 100% offline — no data ever leaves your device
             - No accounts, no ads, no analytics
           files: ${{ steps.files.outputs.files }}
+
+  # ── Update Website Download Links ──────────────────────────────────────
+  update-website:
+    needs: [release]
+    if: needs.release.result == 'success'
+    uses: ./.github/workflows/update-website.yml
+    with:
+      release_tag: ${{ inputs.version }}
+    secrets: inherit

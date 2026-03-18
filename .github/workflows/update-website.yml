@@ -1,0 +1,135 @@
+# VoiceInk — Update Website Download Links
+# Fetches the latest GitHub Release, extracts direct download URLs for
+# macOS and Windows artifacts, updates docs/index.html, and pushes to main.
+#
+# Can be triggered:
+#   1. Manually via workflow_dispatch
+#   2. Automatically by the Release workflow via workflow_call
+
+name: Update Website
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag to use (leave empty for latest)'
+        required: false
+        type: string
+        default: ''
+  workflow_call:
+    inputs:
+      release_tag:
+        description: 'Release tag to use'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  update-links:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch release info
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ inputs.release_tag }}"
+
+          if [ -z "$TAG" ]; then
+            echo "No tag specified — fetching latest release..."
+            RELEASE_JSON=$(gh api repos/${{ github.repository }}/releases/latest)
+          else
+            echo "Fetching release for tag: $TAG"
+            RELEASE_JSON=$(gh api repos/${{ github.repository }}/releases/tags/$TAG)
+          fi
+
+          TAG_NAME=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
+          echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
+
+          # Extract macOS download URL (.dmg preferred, fallback .zip)
+          MAC_URL=$(echo "$RELEASE_JSON" | jq -r '
+            .assets[]
+            | select(.name | test("macOS.*arm64.*\\.dmg$"))
+            | .browser_download_url' | head -1)
+
+          if [ -z "$MAC_URL" ] || [ "$MAC_URL" = "null" ]; then
+            MAC_URL=$(echo "$RELEASE_JSON" | jq -r '
+              .assets[]
+              | select(.name | test("macOS.*arm64.*\\.zip$"))
+              | .browser_download_url' | head -1)
+          fi
+
+          # Extract Windows download URL (.exe)
+          WIN_URL=$(echo "$RELEASE_JSON" | jq -r '
+            .assets[]
+            | select(.name | test("Windows.*x64.*Setup.*\\.exe$"))
+            | .browser_download_url' | head -1)
+
+          # Fallback to releases/latest page if no direct links found
+          REPO_URL="https://github.com/${{ github.repository }}"
+          MAC_URL="${MAC_URL:-${REPO_URL}/releases/latest}"
+          WIN_URL="${WIN_URL:-${REPO_URL}/releases/latest}"
+
+          [ "$MAC_URL" = "null" ] && MAC_URL="${REPO_URL}/releases/latest"
+          [ "$WIN_URL" = "null" ] && WIN_URL="${REPO_URL}/releases/latest"
+
+          echo "mac_url=$MAC_URL" >> "$GITHUB_OUTPUT"
+          echo "win_url=$WIN_URL" >> "$GITHUB_OUTPUT"
+
+          echo "✓ Release: $TAG_NAME"
+          echo "  macOS:   $MAC_URL"
+          echo "  Windows: $WIN_URL"
+
+      - name: Update download links in docs/index.html
+        run: |
+          FILE="docs/index.html"
+          MAC_URL="${{ steps.release.outputs.mac_url }}"
+          WIN_URL="${{ steps.release.outputs.win_url }}"
+          TAG="${{ steps.release.outputs.tag }}"
+
+          if [ ! -f "$FILE" ]; then
+            echo "::error::docs/index.html not found"
+            exit 1
+          fi
+
+          # Update Mac download links (identified by id attributes)
+          sed -i "s|id=\"download-mac-hero\" href=\"[^\"]*\"|id=\"download-mac-hero\" href=\"${MAC_URL}\"|g" "$FILE"
+          sed -i "s|id=\"download-mac-cta\" href=\"[^\"]*\"|id=\"download-mac-cta\" href=\"${MAC_URL}\"|g" "$FILE"
+
+          # Update Windows download links
+          sed -i "s|id=\"download-win-hero\" href=\"[^\"]*\"|id=\"download-win-hero\" href=\"${WIN_URL}\"|g" "$FILE"
+          sed -i "s|id=\"download-win-cta\" href=\"[^\"]*\"|id=\"download-win-cta\" href=\"${WIN_URL}\"|g" "$FILE"
+
+          # Update any visible version string on the page
+          sed -i "s|v[0-9]\+\.[0-9]\+\.[0-9]\+|${TAG}|g" "$FILE"
+
+          echo "=== Verify updated links ==="
+          grep -n 'id="download-' "$FILE"
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet docs/; then
+            echo "No changes to docs/ — skipping commit."
+            exit 0
+          fi
+
+          git add docs/
+          git commit -m "docs: update download links to ${{ steps.release.outputs.tag }}
+
+          macOS: ${{ steps.release.outputs.mac_url }}
+          Windows: ${{ steps.release.outputs.win_url }}"
+
+          git push origin main
+          echo "✓ Website updated and pushed."
