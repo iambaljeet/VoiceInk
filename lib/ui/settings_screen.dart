@@ -20,6 +20,8 @@ class SettingsScreen extends StatefulWidget {
   final WhisperStreamingService? whisperStreaming;
   final HotkeyService? hotkeyService;
   final AudioDeviceService? audioDevice;
+  final bool capsuleBorderVisible;
+  final ValueChanged<bool>? onCapsuleBorderChanged;
 
   const SettingsScreen({
     super.key,
@@ -29,6 +31,8 @@ class SettingsScreen extends StatefulWidget {
     this.whisperStreaming,
     this.hotkeyService,
     this.audioDevice,
+    this.capsuleBorderVisible = true,
+    this.onCapsuleBorderChanged,
   });
 
   @override
@@ -262,6 +266,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _buildShortcutSection(),
                   ],
                 ],
+                // ── Appearance ──
+                const SizedBox(height: 32),
+                _buildSectionHeader('Appearance'),
+                const SizedBox(height: 8),
+                const Text(
+                  'Customise how the floating indicator looks.',
+                  style: TextStyle(color: Colors.white60, fontSize: 13),
+                ),
+                const SizedBox(height: 12),
+                _buildToggle(
+                  'More visibility',
+                  'Adds a thin border around the floating capsule so it\'s easier to spot.',
+                  widget.capsuleBorderVisible,
+                  (v) {
+                    widget.onCapsuleBorderChanged?.call(v);
+                  },
+                ),
                 const SizedBox(height: 32),
                 _buildSectionHeader('About'),
                 const SizedBox(height: 8),

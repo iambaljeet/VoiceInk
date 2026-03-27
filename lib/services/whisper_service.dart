@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 import 'package:whisper_flutter_new/whisper_flutter_new.dart' as wffi;
 
 /// Cross-platform whisper transcription.
@@ -71,7 +72,7 @@ class WhisperService {
     // repeated model load/unload cycles.
     if (_cachedWhisper == null || _cachedModelPath != modelPath) {
       final modelDir = File(modelPath).parent.path;
-      final fileName = modelPath.split('/').last;
+      final fileName = p.basename(modelPath);
       final modelName = fileName.replaceAll('ggml-', '').replaceAll('.bin', '');
       final whisperModel = _toWhisperModel(modelName);
 

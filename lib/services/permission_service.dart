@@ -71,6 +71,8 @@ class PermissionService {
       await Process.run('open', [
         'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
       ]);
+    } else if (Platform.isWindows) {
+      await Process.run('cmd', ['/c', 'start', 'ms-settings:easeofaccess-display']);
     }
   }
 

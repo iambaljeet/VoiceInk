@@ -83,7 +83,6 @@ class WhisperStreamingService extends ChangeNotifier {
     final candidates = [
       '$appDir/../Resources/whisper-cli$ext',
       '$appDir/whisper-cli$ext',
-      '/Users/baljeet/FlutterWorkspace/voice_ink/native/whisper.cpp/build/bin/whisper-cli$ext',
     ];
     candidates.add('${Directory.current.path}/native/whisper.cpp/build/bin/whisper-cli$ext');
 
@@ -92,7 +91,8 @@ class WhisperStreamingService extends ChangeNotifier {
     }
 
     try {
-      final result = await Process.run('which', ['whisper-cli']);
+      final cmd = Platform.isWindows ? 'where' : 'which';
+      final result = await Process.run(cmd, ['whisper-cli']);
       if (result.exitCode == 0) {
         return WhisperService((result.stdout as String).trim());
       }

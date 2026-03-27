@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:system_tray/system_tray.dart';
@@ -77,11 +78,16 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
   bool _pttActive = false; // true while key is held and recording
   DictationState _capsuleState = DictationState.idle;
   static const _minHoldMs = 200; // ignore taps shorter than this
+  bool _capsuleHovered = false;
+  bool _capsuleBorderVisible = true;
+  static const _hoverChannel = MethodChannel('com.voiceink/hover');
+  final _indicatorKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
     windowManager.addListener(this);
+    _hoverChannel.setMethodCallHandler(_handleHoverCall);
     _modelManager = ModelManager();
     _dictation = DictationService(modelManager: _modelManager);
     _whisperStreaming = WhisperStreamingService(modelManager: _modelManager);
@@ -89,6 +95,50 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
     _nativeStt.addListener(_onSttChange);
     _whisperStreaming.addListener(_onSttChange);
     _boot();
+  }
+
+  Future<dynamic> _handleHoverCall(MethodCall call) async {
+    if (!mounted) return;
+    switch (call.method) {
+      case 'mouseMove':
+        final args = call.arguments as Map;
+        final x = (args['x'] as num).toDouble();
+        final y = (args['y'] as num).toDouble();
+        _hitTestCapsule(Offset(x, y));
+        break;
+      case 'mouseExit':
+        if (_capsuleHovered) setState(() => _capsuleHovered = false);
+        break;
+    }
+  }
+
+  void _hitTestCapsule(Offset windowPoint) {
+    final renderBox =
+        _indicatorKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) return;
+
+    final widgetPos = renderBox.localToGlobal(Offset.zero);
+    final size = renderBox.size;
+
+    // Extra padding so the tiny idle pill (48×6) is easy to target
+    const pad = 10.0;
+    final rect = Rect.fromLTWH(
+      widgetPos.dx - pad,
+      widgetPos.dy - pad,
+      size.width + pad * 2,
+      size.height + pad * 2,
+    );
+
+    final inside = rect.contains(windowPoint);
+    if (inside != _capsuleHovered) {
+      setState(() => _capsuleHovered = inside);
+    }
+  }
+
+  Future<void> _setCapsuleBorderVisible(bool value) async {
+    setState(() => _capsuleBorderVisible = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('capsule_border_visible', value);
   }
 
   Future<void> _boot() async {
@@ -128,6 +178,10 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
     _mode = AppMode.capsule;
     if (mounted) setState(() {});
     await _setupCapsuleWindow();
+
+    // Load capsule appearance preference
+    final prefs = await SharedPreferences.getInstance();
+    _capsuleBorderVisible = prefs.getBool('capsule_border_visible') ?? true;
 
     try {
       await _engineManager.init();
@@ -216,7 +270,7 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
       ),
       MenuSeparator(),
       MenuItemLabel(
-        label: 'Show/Hide Capsule  ⌥V',
+        label: 'Show/Hide Capsule  ${Platform.isMacOS ? '⌥V' : 'Alt+V'}',
         onClicked: (_) => _toggleCapsule(),
       ),
       MenuItemLabel(
@@ -490,8 +544,11 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
             color: Colors.transparent,
             child: Center(
               child: FloatingIndicator(
+                key: _indicatorKey,
                 state: _capsuleState,
                 shortcutLabel: _hotkeyService.preset.label,
+                isHovered: _capsuleHovered,
+                showBorder: _capsuleBorderVisible,
               ),
             ),
           ),
@@ -512,6 +569,8 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
             whisperStreaming: _whisperStreaming,
             hotkeyService: _hotkeyService,
             audioDevice: _audioDevice,
+            capsuleBorderVisible: _capsuleBorderVisible,
+            onCapsuleBorderChanged: _setCapsuleBorderVisible,
           ),
           Positioned(
             top: 8,

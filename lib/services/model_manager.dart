@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -101,7 +102,7 @@ class ModelManager extends ChangeNotifier {
 
       await for (final entity in dir.list()) {
         if (entity is File && entity.path.endsWith('.bin')) {
-          final name = entity.path.split('/').last;
+          final name = p.basename(entity.path);
           if (name.startsWith('ggml-') && name.endsWith('.bin')) {
             final id = name.substring(5, name.length - 4);
             // Validate file size — reject old-format models

@@ -79,7 +79,6 @@ class DictationService extends ChangeNotifier {
     final candidates = [
       '$appDir/../Resources/whisper-cli$ext',
       '$appDir/whisper-cli$ext',
-      '/Users/baljeet/FlutterWorkspace/voice_ink/native/whisper.cpp/build/bin/whisper-cli$ext',
     ];
 
     final cwd = Directory.current.path;
@@ -91,7 +90,8 @@ class DictationService extends ChangeNotifier {
 
     // Check PATH
     try {
-      final result = await Process.run('which', ['whisper-cli']);
+      final cmd = Platform.isWindows ? 'where' : 'which';
+      final result = await Process.run(cmd, ['whisper-cli']);
       if (result.exitCode == 0) return (result.stdout as String).trim();
     } catch (_) {}
 

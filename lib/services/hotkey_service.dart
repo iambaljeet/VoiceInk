@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
@@ -12,24 +13,26 @@ enum ShortcutPreset {
 
 extension ShortcutPresetX on ShortcutPreset {
   String get label {
+    final isMac = Platform.isMacOS;
     switch (this) {
       case ShortcutPreset.optionSpace:
-        return '⌥ Space';
+        return isMac ? '⌥ Space' : 'Alt + Space';
       case ShortcutPreset.controlSpace:
-        return '⌃ Space';
+        return isMac ? '⌃ Space' : 'Ctrl + Space';
       case ShortcutPreset.optionShiftSpace:
-        return '⌥⇧ Space';
+        return isMac ? '⌥⇧ Space' : 'Alt + Shift + Space';
     }
   }
 
   String get description {
+    final altKey = Platform.isMacOS ? 'Option' : 'Alt';
     switch (this) {
       case ShortcutPreset.optionSpace:
-        return 'Hold Option + Space to dictate';
+        return 'Hold $altKey + Space to dictate';
       case ShortcutPreset.controlSpace:
         return 'Hold Control + Space to dictate';
       case ShortcutPreset.optionShiftSpace:
-        return 'Hold Option + Shift + Space to dictate';
+        return 'Hold $altKey + Shift + Space to dictate';
     }
   }
 
