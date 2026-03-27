@@ -74,9 +74,9 @@ class _DictionaryScreenState extends State<DictionaryScreen> {
 
   Widget _buildTermCard(Map<String, dynamic> term) {
     final int id = term['id'] as int;
-    final String source = term['source_value'] as String;
-    final String destination = term['destination_value'] as String;
-    final bool isEnabled = (term['is_enabled'] as int) == 1;
+    final String source = term['sourceValue'] as String;
+    final String destination = term['destinationValue'] as String;
+    final bool isEnabled = term['isEnabled'] as bool;
 
     return Dismissible(
       key: ValueKey(id),

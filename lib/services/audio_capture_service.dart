@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:record/record.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 
@@ -17,7 +18,7 @@ class AudioCaptureService {
 
   Future<void> init() async {
     final dir = await getTemporaryDirectory();
-    _tempDir = '${dir.path}/voice_ink';
+    _tempDir = p.join(dir.path, 'voice_ink');
     await Directory(_tempDir!).create(recursive: true);
   }
 
@@ -142,7 +143,7 @@ class AudioCaptureService {
     _isRecording = false;
   }
 
-  String _getChunkPath(int index) => '$_tempDir/chunk_$index.wav';
+  String _getChunkPath(int index) => p.join(_tempDir!, 'chunk_$index.wav');
 
   /// Clean up all temp files
   Future<void> cleanup() async {

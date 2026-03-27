@@ -7,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:system_tray/system_tray.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import 'services/model_manager.dart';
 import 'services/dictation_service.dart';
 import 'services/whisper_streaming_service.dart';
@@ -290,7 +291,7 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
     try {
       final data = await rootBundle.load(AppConfig.trayIconAsset);
       final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/voiceink_tray.png');
+      final file = File(p.join(dir.path, 'voiceink_tray.png'));
       await file.writeAsBytes(data.buffer.asUint8List());
       return file.path;
     } catch (e) {

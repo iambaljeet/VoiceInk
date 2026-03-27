@@ -44,7 +44,7 @@ class ModelManager extends ChangeNotifier {
 
   String? getModelPath(String modelId) {
     if (_modelsDir == null || !_downloadedModels.contains(modelId)) return null;
-    return '$_modelsDir/ggml-$modelId.bin';
+    return p.join(_modelsDir!, 'ggml-$modelId.bin');
   }
 
   String? get selectedModelPath {
@@ -54,7 +54,7 @@ class ModelManager extends ChangeNotifier {
 
   Future<void> init() async {
     final appDir = await getApplicationSupportDirectory();
-    _modelsDir = '${appDir.path}/models';
+    _modelsDir = p.join(appDir.path, 'models');
     await Directory(_modelsDir!).create(recursive: true);
 
     // Load persisted model selection
@@ -116,7 +116,7 @@ class ModelManager extends ChangeNotifier {
             if (!_downloadedModels.contains(id)) {
               // Copy from container to non-sandboxed location if needed
               if (dirPath != _modelsDir) {
-                final destPath = '$_modelsDir/$name';
+                final destPath = p.join(_modelsDir!, name);
                 if (!await File(destPath).exists()) {
                   await entity.copy(destPath);
                 }
@@ -144,7 +144,7 @@ class ModelManager extends ChangeNotifier {
     if (_modelsDir == null) return;
     if (_downloadedModels.contains(model.id)) return;
 
-    final filePath = '$_modelsDir/ggml-${model.id}.bin';
+    final filePath = p.join(_modelsDir!, 'ggml-${model.id}.bin');
     _downloadProgress[model.id] = 0.0;
     _cancelToken = CancelToken();
     notifyListeners();
@@ -198,7 +198,7 @@ class ModelManager extends ChangeNotifier {
 
   Future<void> deleteModel(String modelId) async {
     if (_modelsDir == null) return;
-    final file = File('$_modelsDir/ggml-$modelId.bin');
+    final file = File(p.join(_modelsDir!, 'ggml-$modelId.bin'));
     if (await file.exists()) {
       await file.delete();
     }

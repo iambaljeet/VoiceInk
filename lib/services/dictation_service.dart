@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'audio_capture_service.dart';
 import 'whisper_service.dart';
@@ -77,12 +78,12 @@ class DictationService extends ChangeNotifier {
     final ext = Platform.isWindows ? '.exe' : '';
 
     final candidates = [
-      '$appDir/../Resources/whisper-cli$ext',
-      '$appDir/whisper-cli$ext',
+      p.join(appDir, '..', 'Resources', 'whisper-cli$ext'),
+      p.join(appDir, 'whisper-cli$ext'),
     ];
 
     final cwd = Directory.current.path;
-    candidates.add('$cwd/native/whisper.cpp/build/bin/whisper-cli$ext');
+    candidates.add(p.join(cwd, 'native', 'whisper.cpp', 'build', 'bin', 'whisper-cli$ext'));
 
     for (final path in candidates) {
       if (await File(path).exists()) return path;

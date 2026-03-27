@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
@@ -70,7 +71,7 @@ class WhisperStreamingService extends ChangeNotifier {
 
   Future<void> init() async {
     final dir = await getTemporaryDirectory();
-    _tempDir = '${dir.path}/voice_ink_streaming';
+    _tempDir = p.join(dir.path, 'voice_ink_streaming');
     await Directory(_tempDir!).create(recursive: true);
     _whisper = await _resolveWhisper();
   }
@@ -81,10 +82,10 @@ class WhisperStreamingService extends ChangeNotifier {
     final ext = Platform.isWindows ? '.exe' : '';
 
     final candidates = [
-      '$appDir/../Resources/whisper-cli$ext',
-      '$appDir/whisper-cli$ext',
+      p.join(appDir, '..', 'Resources', 'whisper-cli$ext'),
+      p.join(appDir, 'whisper-cli$ext'),
     ];
-    candidates.add('${Directory.current.path}/native/whisper.cpp/build/bin/whisper-cli$ext');
+    candidates.add(p.join(Directory.current.path, 'native', 'whisper.cpp', 'build', 'bin', 'whisper-cli$ext'));
 
     for (final path in candidates) {
       if (await File(path).exists()) return WhisperService(path);
@@ -211,7 +212,7 @@ class WhisperStreamingService extends ChangeNotifier {
         _audioBuffer.sublist(windowStart),
       );
 
-      final wavPath = '$_tempDir/partial.wav';
+      final wavPath = p.join(_tempDir!, 'partial.wav');
       await _writeWav(wavPath, windowSamples, _sampleRate);
 
       final rawText = await _whisper!.transcribe(
@@ -258,7 +259,7 @@ class WhisperStreamingService extends ChangeNotifier {
       }
 
       final samples = Float32List.fromList(trimmedBuffer);
-      final wavPath = '$_tempDir/endpoint.wav';
+      final wavPath = p.join(_tempDir!, 'endpoint.wav');
       await _writeWav(wavPath, samples, _sampleRate);
 
       final rawText = await _whisper!.transcribe(
@@ -331,7 +332,7 @@ class WhisperStreamingService extends ChangeNotifier {
         final trimmedBuffer = _trimSilence(_audioBuffer);
         if (trimmedBuffer.length > _sampleRate ~/ 4) {
           final samples = Float32List.fromList(trimmedBuffer);
-          final wavPath = '$_tempDir/final.wav';
+          final wavPath = p.join(_tempDir!, 'final.wav');
           await _writeWav(wavPath, samples, _sampleRate);
 
           final rawText = await _whisper!.transcribe(

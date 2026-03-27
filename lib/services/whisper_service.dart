@@ -37,9 +37,9 @@ class WhisperService {
         '-t', '$threads',
         '--no-prints',
       ],
-      environment: {
-        'GGML_METAL_PATH_RESOURCES': File(cliPath!).parent.path,
-      },
+      environment: Platform.isMacOS
+          ? {'GGML_METAL_PATH_RESOURCES': File(cliPath!).parent.path}
+          : null,
     ).timeout(
       const Duration(seconds: 30),
       onTimeout: () => ProcessResult(-1, -1, '', 'Transcription timed out'),
