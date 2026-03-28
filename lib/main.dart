@@ -493,7 +493,21 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
 
   @override
   void onWindowClose() async {
+    // If settings is open, return to capsule instead of hiding everything.
+    if (_mode == AppMode.settings) {
+      _closeSettings();
+      return;
+    }
     _hideCapsule();
+  }
+
+  @override
+  void onWindowBlur() {
+    // When settings window loses focus (clicked away, taskbar hide, etc.),
+    // collapse back to the floating capsule so it stays visible.
+    if (_mode == AppMode.settings) {
+      _closeSettings();
+    }
   }
 
   @override
