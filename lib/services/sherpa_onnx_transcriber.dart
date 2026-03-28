@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 import 'stt_transcriber.dart';
 import 'sherpa_model_manager.dart';
@@ -23,17 +24,30 @@ class SherpaOnnxTranscriber implements SttTranscriber {
     try {
       sherpa.initBindings();
       _initialized = true;
-      debugPrint('[SherpaOnnx] Bindings initialized');
+      final prefs = await SharedPreferences.getInstance();
+      _language = prefs.getString('whisper_language') ?? 'auto';
+      debugPrint('[SherpaOnnx] Bindings initialized, language=$_language');
     } catch (e) {
       debugPrint('[SherpaOnnx] Failed to initialize: $e');
       _initialized = false;
     }
   }
 
+  /// Update language preference. Forces recognizer reload on next transcription.
+  void setLanguage(String language) {
+    if (_language != language) {
+      _language = language;
+      // Force recognizer rebuild with new language
+      _recognizer?.free();
+      _recognizer = null;
+      _loadedPaths = null;
+    }
+  }
+
   /// Load or reload the recognizer with given model paths.
   void _ensureRecognizer(SherpaModelPaths paths) {
-    if (_loadedPaths?.encoder == paths.encoder &&
-        _loadedPaths?.decoder == paths.decoder &&
+    if (_loadedPaths?.modelDir == paths.modelDir &&
+        _loadedPaths?.modelType == paths.modelType &&
         _recognizer != null) {
       return;
     }
@@ -47,34 +61,69 @@ class SherpaOnnxTranscriber implements SttTranscriber {
     debugPrint('[SherpaOnnx] Recognizer loaded: ${paths.modelType}');
   }
 
-  sherpa.OfflineRecognizerConfig _buildConfig(SherpaModelPaths paths) {
-    if (paths.modelType == 'sense_voice') {
-      return sherpa.OfflineRecognizerConfig(
-        model: sherpa.OfflineModelConfig(
-          senseVoice: sherpa.OfflineSenseVoiceModelConfig(
-            model: paths.encoder,
-          ),
-          tokens: paths.tokens,
-          numThreads: 4,
-          debug: false,
-          modelType: 'sense_voice',
-        ),
-      );
-    }
+  String _language = 'auto';
 
-    // Default: Whisper ONNX
-    return sherpa.OfflineRecognizerConfig(
-      model: sherpa.OfflineModelConfig(
-        whisper: sherpa.OfflineWhisperModelConfig(
-          encoder: paths.encoder,
-          decoder: paths.decoder,
-        ),
-        tokens: paths.tokens,
-        numThreads: 4,
-        debug: false,
-        modelType: 'whisper',
-      ),
-    );
+  sherpa.OfflineRecognizerConfig _buildConfig(SherpaModelPaths paths) {
+    switch (paths.modelType) {
+      case 'sense_voice':
+        return sherpa.OfflineRecognizerConfig(
+          model: sherpa.OfflineModelConfig(
+            senseVoice: sherpa.OfflineSenseVoiceModelConfig(
+              model: paths.fileMatching('model') ?? '',
+              language: _language == 'auto' ? '' : _language,
+            ),
+            tokens: paths.tokens,
+            numThreads: 4,
+            debug: false,
+            modelType: 'sense_voice',
+          ),
+        );
+
+      case 'moonshine':
+        return sherpa.OfflineRecognizerConfig(
+          model: sherpa.OfflineModelConfig(
+            moonshine: sherpa.OfflineMoonshineModelConfig(
+              preprocessor: paths.fileMatching('preprocess') ?? '',
+              encoder: paths.fileMatching('encode') ?? '',
+              uncachedDecoder: paths.fileMatching('uncached_decode') ?? '',
+              cachedDecoder: paths.fileMatching('cached_decode') ?? '',
+            ),
+            tokens: paths.tokens,
+            numThreads: 4,
+            debug: false,
+            modelType: 'moonshine',
+          ),
+        );
+
+      case 'paraformer':
+        return sherpa.OfflineRecognizerConfig(
+          model: sherpa.OfflineModelConfig(
+            paraformer: sherpa.OfflineParaformerModelConfig(
+              model: paths.fileMatching('model') ?? '',
+            ),
+            tokens: paths.tokens,
+            numThreads: 4,
+            debug: false,
+            modelType: 'paraformer',
+          ),
+        );
+
+      default: // whisper
+        return sherpa.OfflineRecognizerConfig(
+          model: sherpa.OfflineModelConfig(
+            whisper: sherpa.OfflineWhisperModelConfig(
+              encoder: paths.fileMatching('encoder') ?? '',
+              decoder: paths.fileMatching('decoder') ?? '',
+              language: _language == 'auto' ? '' : _language,
+              task: 'transcribe',
+            ),
+            tokens: paths.tokens,
+            numThreads: 4,
+            debug: false,
+            modelType: 'whisper',
+          ),
+        );
+    }
   }
 
   @override

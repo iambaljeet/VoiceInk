@@ -33,6 +33,7 @@ class ModelManager extends ChangeNotifier {
   final Map<String, double> _downloadProgress = {};
   final Set<String> _downloadedModels = {};
   CancelToken? _cancelToken;
+  String? _activeDownloadId;
 
   String? get selectedModelId => _selectedModelId;
   Map<String, double> get downloadProgress => Map.unmodifiable(_downloadProgress);
@@ -147,6 +148,7 @@ class ModelManager extends ChangeNotifier {
     final filePath = p.join(_modelsDir!, 'ggml-${model.id}.bin');
     _downloadProgress[model.id] = 0.0;
     _cancelToken = CancelToken();
+    _activeDownloadId = model.id;
     notifyListeners();
 
     try {
@@ -188,12 +190,20 @@ class ModelManager extends ChangeNotifier {
       }
     } finally {
       _cancelToken = null;
+      _activeDownloadId = null;
       notifyListeners();
     }
   }
 
   void cancelDownload() {
+    final id = _activeDownloadId;
     _cancelToken?.cancel();
+    _cancelToken = null;
+    if (id != null) {
+      _downloadProgress.remove(id);
+      _activeDownloadId = null;
+    }
+    notifyListeners();
   }
 
   Future<void> deleteModel(String modelId) async {

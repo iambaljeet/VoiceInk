@@ -17,6 +17,7 @@ class SherpaModelManager extends ChangeNotifier {
   final Map<String, double> _downloadProgress = {};
   final Set<String> _downloadedModels = {};
   CancelToken? _cancelToken;
+  String? _activeDownloadId;
 
   String? get selectedModelId => _selectedModelId;
   Map<String, double> get downloadProgress =>
@@ -46,13 +47,14 @@ class SherpaModelManager extends ChangeNotifier {
       (m) => m.id == modelId,
       orElse: () => SherpaModel.available.first,
     );
+    final filePaths = <String, String>{};
+    for (final filename in model.files.keys) {
+      filePaths[filename] = p.join(dir, filename);
+    }
     return SherpaModelPaths(
-      encoder: p.join(dir, model.encoderFilename),
-      decoder: model.decoderFilename.isNotEmpty
-          ? p.join(dir, model.decoderFilename)
-          : '',
-      tokens: p.join(dir, model.tokensFilename),
-      modelType: modelId.startsWith('sense-voice') ? 'sense_voice' : 'whisper',
+      modelType: model.modelType,
+      modelDir: dir,
+      files: filePaths,
     );
   }
 
@@ -77,17 +79,13 @@ class SherpaModelManager extends ChangeNotifier {
     await for (final entity in dir.list()) {
       if (entity is Directory) {
         final modelId = p.basename(entity.path);
-        // Check model has required files
         final model = SherpaModel.available.where((m) => m.id == modelId);
         if (model.isNotEmpty) {
           final m = model.first;
-          final hasEncoder =
-              File(p.join(entity.path, m.encoderFilename)).existsSync();
-          final hasTokens =
-              File(p.join(entity.path, m.tokensFilename)).existsSync();
-          final hasDecoder = m.decoderFilename.isEmpty ||
-              File(p.join(entity.path, m.decoderFilename)).existsSync();
-          if (hasEncoder && hasTokens && hasDecoder) {
+          final allPresent = m.files.keys.every(
+            (filename) => File(p.join(entity.path, filename)).existsSync(),
+          );
+          if (allPresent) {
             _downloadedModels.add(modelId);
           }
         }
@@ -114,28 +112,22 @@ class SherpaModelManager extends ChangeNotifier {
 
     _downloadProgress[model.id] = 0.0;
     _cancelToken = CancelToken();
+    _activeDownloadId = model.id;
     notifyListeners();
 
     try {
-      // Download files: encoder, tokens, and optionally decoder
-      final files = <MapEntry<String, String>>[];
-      files.add(MapEntry(model.encoderUrl, model.encoderFilename));
-      files.add(MapEntry(model.tokensUrl, model.tokensFilename));
-      if (model.decoderUrl.isNotEmpty) {
-        files.add(MapEntry(model.decoderUrl, model.decoderFilename));
-      }
+      final fileEntries = model.files.entries.toList();
 
-      for (int i = 0; i < files.length; i++) {
-        final entry = files[i];
-        final filePath = p.join(modelDir, entry.value);
+      for (int i = 0; i < fileEntries.length; i++) {
+        final entry = fileEntries[i];
+        final filePath = p.join(modelDir, entry.key);
         await _dio.download(
-          entry.key,
+          entry.value,
           filePath,
           cancelToken: _cancelToken,
           onReceiveProgress: (received, total) {
-            // Approximate progress across all files
             final fileProgress = (i + (total > 0 ? received / total : 0));
-            _downloadProgress[model.id] = fileProgress / files.length;
+            _downloadProgress[model.id] = fileProgress / fileEntries.length;
             notifyListeners();
           },
         );
@@ -157,12 +149,20 @@ class SherpaModelManager extends ChangeNotifier {
       }
     } finally {
       _cancelToken = null;
+      _activeDownloadId = null;
       notifyListeners();
     }
   }
 
   void cancelDownload() {
+    final id = _activeDownloadId;
     _cancelToken?.cancel();
+    _cancelToken = null;
+    if (id != null) {
+      _downloadProgress.remove(id);
+      _activeDownloadId = null;
+    }
+    notifyListeners();
   }
 
   Future<void> deleteModel(String modelId) async {
@@ -200,15 +200,25 @@ class SherpaModelManager extends ChangeNotifier {
 
 /// Paths to the model files for a sherpa-onnx model.
 class SherpaModelPaths {
-  final String encoder;
-  final String decoder;
-  final String tokens;
   final String modelType;
+  final String modelDir;
+  /// All downloaded file paths, keyed by filename.
+  final Map<String, String> files;
 
   const SherpaModelPaths({
-    required this.encoder,
-    required this.decoder,
-    required this.tokens,
     required this.modelType,
+    required this.modelDir,
+    required this.files,
   });
+
+  /// Convenience: find the first file matching a substring.
+  String? fileMatching(String substring) {
+    for (final entry in files.entries) {
+      if (entry.key.contains(substring)) return entry.value;
+    }
+    return null;
+  }
+
+  /// Tokens file path.
+  String get tokens => fileMatching('tokens') ?? '';
 }
