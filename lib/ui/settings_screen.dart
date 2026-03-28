@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/whisper_model.dart';
+import '../models/sherpa_model.dart';
 import '../models/writing_style.dart';
 import '../services/model_manager.dart';
+import '../services/sherpa_model_manager.dart';
 import '../services/dictation_service.dart';
 import '../services/stt_engine_manager.dart';
 import '../services/whisper_streaming_service.dart';
@@ -15,6 +17,7 @@ import '../config/app_config.dart';
 
 class SettingsScreen extends StatefulWidget {
   final ModelManager modelManager;
+  final SherpaModelManager? sherpaModelManager;
   final DictationService dictationService;
   final SttEngineManager? engineManager;
   final WhisperStreamingService? whisperStreaming;
@@ -26,6 +29,7 @@ class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
     required this.modelManager,
+    this.sherpaModelManager,
     required this.dictationService,
     this.engineManager,
     this.whisperStreaming,
@@ -40,6 +44,24 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    widget.sherpaModelManager?.addListener(_rebuild);
+    widget.engineManager?.addListener(_rebuild);
+  }
+
+  @override
+  void dispose() {
+    widget.sherpaModelManager?.removeListener(_rebuild);
+    widget.engineManager?.removeListener(_rebuild);
+    super.dispose();
+  }
+
+  void _rebuild() {
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -64,26 +86,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _buildStatsSection(),
                 const SizedBox(height: 32),
 
-                // Engine selection
+                // STT Provider selection
                 if (widget.engineManager != null) ...[
-                  _buildSectionHeader('Speech Engine'),
+                  _buildSectionHeader('STT Provider'),
                   const SizedBox(height: 8),
                   const Text(
-                    'Choose how ${AppConfig.appName} converts speech to text.',
+                    'Choose the speech-to-text engine for transcription.',
                     style: TextStyle(color: Colors.white60, fontSize: 13),
                   ),
                   const SizedBox(height: 12),
-                  ...SttEngine.values.map((engine) => _buildEngineCard(engine)),
+                  ...SttProvider.values.map((provider) => _buildProviderCard(provider)),
                   const SizedBox(height: 24),
                 ],
-                _buildSectionHeader('Speech Models (Whisper)'),
-                const SizedBox(height: 8),
-                const Text(
-                  'Download and manage Whisper models. Larger models are more accurate but slower.\nTap a downloaded model to select it as active.',
-                  style: TextStyle(color: Colors.white60, fontSize: 13),
-                ),
-                const SizedBox(height: 16),
-                ...WhisperModel.available.map(_buildModelCard),
+                // Show models based on selected provider
+                if (widget.engineManager?.provider == SttProvider.whisperCpp) ...[
+                  _buildSectionHeader('Speech Models (Whisper.cpp)'),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Download and manage Whisper models. Larger models are more accurate but slower.\nTap a downloaded model to select it as active.',
+                    style: TextStyle(color: Colors.white60, fontSize: 13),
+                  ),
+                  const SizedBox(height: 16),
+                  ...WhisperModel.available.map(_buildModelCard),
+                ] else if (widget.engineManager?.provider == SttProvider.sherpaOnnx) ...[
+                  _buildSectionHeader('Speech Models (Sherpa-ONNX)'),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Download and manage Sherpa-ONNX models. Uses native FFI for fast inference.\nTap a downloaded model to select it as active.',
+                    style: TextStyle(color: Colors.white60, fontSize: 13),
+                  ),
+                  const SizedBox(height: 16),
+                  ...SherpaModel.available.map(_buildSherpaModelCard),
+                ],
                 const SizedBox(height: 32),
                 _buildSectionHeader('Text Cleanup'),
                 const SizedBox(height: 16),
@@ -438,6 +472,110 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _buildSherpaModelCard(SherpaModel model) {
+    final sm = widget.sherpaModelManager;
+    if (sm == null) return const SizedBox.shrink();
+    final isDownloaded = sm.isDownloaded(model.id);
+    final isDownloading = sm.isDownloading(model.id);
+    final isSelected = sm.selectedModelId == model.id;
+    final progress = sm.getProgress(model.id);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: isSelected
+            ? Colors.blue.withValues(alpha: 0.15)
+            : Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isSelected
+              ? Colors.blue.withValues(alpha: 0.5)
+              : Colors.white.withValues(alpha: 0.1),
+        ),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: isDownloaded
+            ? Icon(
+                isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+                color: isSelected ? Colors.blue : Colors.white38,
+              )
+            : const Icon(Icons.cloud_download_outlined, color: Colors.white38),
+        title: Text(
+          model.name,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${model.description} (${model.sizeLabel})',
+              style: const TextStyle(color: Colors.white60, fontSize: 12),
+            ),
+            if (isDownloading && progress != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  backgroundColor: Colors.white12,
+                  color: Colors.blue,
+                ),
+              ),
+          ],
+        ),
+        trailing: _buildSherpaModelAction(model, isDownloaded, isDownloading, isSelected),
+        onTap: isDownloaded ? () => sm.selectModel(model.id) : null,
+      ),
+    );
+  }
+
+  Widget? _buildSherpaModelAction(
+    SherpaModel model,
+    bool isDownloaded,
+    bool isDownloading,
+    bool isSelected,
+  ) {
+    final sm = widget.sherpaModelManager;
+    if (sm == null) return null;
+    if (isDownloading) {
+      return IconButton(
+        icon: const Icon(Icons.cancel, color: Colors.white54),
+        onPressed: () => sm.cancelDownload(),
+      );
+    }
+    if (isDownloaded) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isSelected)
+            const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Text(
+                'Active',
+                style: TextStyle(
+                  color: Colors.blue,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          if (!isSelected)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.white38),
+              onPressed: () => sm.deleteModel(model.id),
+            ),
+        ],
+      );
+    }
+    return TextButton(
+      onPressed: () => sm.downloadModel(model),
+      child: const Text('Download'),
+    );
+  }
+
   Widget _buildToggle(
     String title,
     String subtitle,
@@ -467,10 +605,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildEngineCard(SttEngine engine) {
+  Widget _buildProviderCard(SttProvider provider) {
     final mgr = widget.engineManager!;
-    final isSelected = mgr.engine == engine;
-    final isDisabled = engine == SttEngine.native && !mgr.nativeAvailable;
+    final isSelected = mgr.provider == provider;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -489,33 +626,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         leading: Icon(
           isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-          color: isDisabled
-              ? Colors.white24
-              : isSelected
-                  ? Colors.blue
-                  : Colors.white38,
+          color: isSelected ? Colors.blue : Colors.white38,
         ),
         title: Row(
           children: [
-            Text(engine.icon, style: const TextStyle(fontSize: 18)),
+            Text(provider.icon, style: const TextStyle(fontSize: 18)),
             const SizedBox(width: 8),
             Text(
-              engine.label,
-              style: TextStyle(
-                color: isDisabled ? Colors.white38 : Colors.white,
+              provider.label,
+              style: const TextStyle(
+                color: Colors.white,
                 fontWeight: FontWeight.w500,
               ),
             ),
           ],
         ),
         subtitle: Text(
-          isDisabled
-              ? 'Not available on this device'
-              : engine.description,
-          style: TextStyle(
-            color: isDisabled ? Colors.white24 : Colors.white60,
-            fontSize: 12,
-          ),
+          provider.description,
+          style: const TextStyle(color: Colors.white60, fontSize: 12),
         ),
         trailing: isSelected
             ? const Text('Active',
@@ -524,12 +652,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     fontWeight: FontWeight.w600,
                     fontSize: 12))
             : null,
-        onTap: isDisabled
-            ? null
-            : () {
-                mgr.setEngine(engine);
-                setState(() {});
-              },
+        onTap: () {
+          mgr.setProvider(provider);
+          setState(() {});
+        },
       ),
     );
   }

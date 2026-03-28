@@ -4,18 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 import '../config/app_config.dart';
-import '../services/stt_engine_manager.dart';
 import '../services/permission_service.dart';
 import '../services/audio_device_service.dart';
 import '../services/hotkey_service.dart';
 import '../services/model_manager.dart';
+import '../services/stt_engine_manager.dart';
 import '../models/whisper_model.dart';
 
 const _bgColor = Color(0xFF1a1a2e);
 const _accentColor = Color(0xFF3B82F6);
 
 /// Full-screen onboarding wizard shown on first launch.
-/// Pages: Welcome → Engine → (Language+Model) → Permissions → Mic → Shortcut
+/// Pages: Welcome → Language+Model → Permissions → Mic → Shortcut
 class OnboardingScreen extends StatefulWidget {
   final PermissionService permissions;
   final AudioDeviceService audioDevice;
@@ -53,11 +53,10 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final _pageController = PageController();
   int _page = 0;
-  SttEngine _selectedEngine = SttEngine.native;
   Timer? _permPoll;
 
-  // Total pages: 0=Welcome, 1=Engine, 2=Lang+Model, 3=Permissions, 4=Mic, 5=Shortcut
-  static const _totalPages = 6;
+  // Total pages: 0=Welcome, 1=Lang+Model, 2=Permissions, 3=Mic, 4=Shortcut
+  static const _totalPages = 5;
 
   @override
   void initState() {
@@ -86,30 +85,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.dispose();
   }
 
-  void _onEngineChanged(SttEngine engine) {
-    setState(() => _selectedEngine = engine);
-  }
-
-  /// Map actual page index → visual step index (skips page 2 for native).
-  int get _visualStep {
-    if (_selectedEngine == SttEngine.native && _page > 1) {
-      return _page - 1; // skip the lang+model dot
-    }
-    return _page;
-  }
-
-  int get _visiblePageCount =>
-      _selectedEngine == SttEngine.native ? _totalPages - 1 : _totalPages;
-
   void _next() {
     if (_page >= _totalPages - 1) return;
-    int target = _page + 1;
-    // Skip page 2 (lang+model) when using native engine
-    if (_page == 1 && _selectedEngine == SttEngine.native) {
-      target = 3;
-    }
     _pageController.animateToPage(
-      target,
+      _page + 1,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
     );
@@ -117,13 +96,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   void _back() {
     if (_page <= 0) return;
-    int target = _page - 1;
-    // Skip page 2 (lang+model) when going back with native engine
-    if (_page == 3 && _selectedEngine == SttEngine.native) {
-      target = 1;
-    }
     _pageController.animateToPage(
-      target,
+      _page - 1,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
     );
@@ -145,8 +119,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           children: [
             const SizedBox(height: 20),
             _StepIndicator(
-              currentStep: _visualStep,
-              totalSteps: _visiblePageCount,
+              currentStep: _page,
+              totalSteps: _totalPages,
             ),
             const SizedBox(height: 12),
             Expanded(
@@ -156,14 +130,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 onPageChanged: (i) => setState(() => _page = i),
                 children: [
                   _WelcomePage(onNext: _next),
-                  _EngineSelectionPage(
-                    engineManager: widget.engineManager,
-                    onNext: _next,
-                    onBack: _back,
-                    onEngineChanged: _onEngineChanged,
-                  ),
                   _LanguageModelPage(
                     modelManager: widget.modelManager,
+                    engineManager: widget.engineManager,
                     onNext: _next,
                     onBack: _back,
                   ),
@@ -288,278 +257,17 @@ class _WelcomePage extends StatelessWidget {
   }
 }
 
-// ─── Page 1: Engine Selection ────────────────────────────
-
-class _EngineSelectionPage extends StatefulWidget {
-  final SttEngineManager? engineManager;
-  final VoidCallback onNext;
-  final VoidCallback onBack;
-  final ValueChanged<SttEngine> onEngineChanged;
-
-  const _EngineSelectionPage({
-    required this.engineManager,
-    required this.onNext,
-    required this.onBack,
-    required this.onEngineChanged,
-  });
-
-  @override
-  State<_EngineSelectionPage> createState() => _EngineSelectionPageState();
-}
-
-class _EngineSelectionPageState extends State<_EngineSelectionPage> {
-  SttEngine _selected = SttEngine.native;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadSaved();
-  }
-
-  Future<void> _loadSaved() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString('stt_engine');
-    if (saved == 'model' && mounted) {
-      setState(() => _selected = SttEngine.model);
-      widget.onEngineChanged(SttEngine.model);
-    }
-  }
-
-  Future<void> _selectEngine(SttEngine engine) async {
-    setState(() => _selected = engine);
-    widget.onEngineChanged(engine);
-    if (widget.engineManager != null) {
-      await widget.engineManager!.setEngine(engine);
-    } else {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-          'stt_engine', engine == SttEngine.model ? 'model' : 'native');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 16),
-          const Text('Speech Engine',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Text('Choose how your voice is transcribed.',
-              style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.5), fontSize: 13)),
-          const SizedBox(height: 24),
-          _engineCard(
-            engine: SttEngine.native,
-            icon: Icons.record_voice_over,
-            title: 'System Speech',
-            subtitle:
-                "Uses your operating system's built-in speech recognition",
-            pros: [
-              'No setup or downloads needed',
-              'Low battery and memory usage',
-              'Great for everyday dictation',
-              'Works instantly',
-            ],
-            cons: [
-              'Accuracy varies by OS',
-              'Limited language support',
-              'May need internet on some systems',
-            ],
-          ),
-          const SizedBox(height: 12),
-          _engineCard(
-            engine: SttEngine.model,
-            icon: Icons.psychology,
-            title: 'AI Model (Whisper)',
-            subtitle: 'Runs a local AI model for high-quality transcription',
-            pros: [
-              'Highly accurate transcription',
-              '100% offline — zero data leaves your device',
-              '52+ languages supported',
-              'Best for professional and multilingual use',
-            ],
-            cons: [
-              'Requires one-time model download (75 MB–1.5 GB)',
-              'Uses more memory and battery',
-              'Slightly higher CPU usage while transcribing',
-            ],
-          ),
-          const Spacer(),
-          Row(
-            children: [
-              TextButton(
-                onPressed: widget.onBack,
-                child: const Text('Back'),
-              ),
-              const Spacer(),
-              ElevatedButton(
-                onPressed: widget.onNext,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _accentColor,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                ),
-                child: const Text('Next'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
-
-  Widget _engineCard({
-    required SttEngine engine,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required List<String> pros,
-    required List<String> cons,
-  }) {
-    final selected = _selected == engine;
-    return GestureDetector(
-      onTap: () => _selectEngine(engine),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: selected
-              ? _accentColor.withValues(alpha: 0.15)
-              : Colors.white.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected
-                ? _accentColor.withValues(alpha: 0.5)
-                : Colors.white.withValues(alpha: 0.1),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  selected
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_off,
-                  color: selected ? _accentColor : Colors.white38,
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Icon(icon,
-                    color: selected
-                        ? _accentColor
-                        : Colors.white.withValues(alpha: 0.6),
-                    size: 22),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                              fontSize: 15)),
-                      Text(subtitle,
-                          style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.5),
-                              fontSize: 11)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: pros
-                        .map((p) => Padding(
-                              padding: const EdgeInsets.only(bottom: 2),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 2),
-                                    child: Icon(Icons.add_circle_outline,
-                                        color: Colors.green
-                                            .withValues(alpha: 0.7),
-                                        size: 12),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Flexible(
-                                    child: Text(p,
-                                        style: TextStyle(
-                                            color: Colors.white
-                                                .withValues(alpha: 0.6),
-                                            fontSize: 11)),
-                                  ),
-                                ],
-                              ),
-                            ))
-                        .toList(),
-                  ),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: cons
-                        .map((c) => Padding(
-                              padding: const EdgeInsets.only(bottom: 2),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 2),
-                                    child: Icon(Icons.remove_circle_outline,
-                                        color: Colors.orange
-                                            .withValues(alpha: 0.7),
-                                        size: 12),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Flexible(
-                                    child: Text(c,
-                                        style: TextStyle(
-                                            color: Colors.white
-                                                .withValues(alpha: 0.6),
-                                            fontSize: 11)),
-                                  ),
-                                ],
-                              ),
-                            ))
-                        .toList(),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Page 2: Language + Model Download ───────────────────
+// ─── Page 1: Language + Model Download (mandatory) ───────
 
 class _LanguageModelPage extends StatefulWidget {
   final ModelManager? modelManager;
+  final SttEngineManager? engineManager;
   final VoidCallback onNext;
   final VoidCallback onBack;
 
   const _LanguageModelPage({
     required this.modelManager,
+    required this.engineManager,
     required this.onNext,
     required this.onBack,
   });
@@ -665,17 +373,17 @@ class _LanguageModelPageState extends State<_LanguageModelPage> {
     final mm = widget.modelManager;
     final hasModel = mm != null && mm.downloadedModels.isNotEmpty;
     if (!hasModel) {
-      // Show warning but allow proceeding
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          backgroundColor: Colors.amber.shade800,
+          backgroundColor: Colors.red.shade700,
           content: const Text(
-            "You'll need to download a model from Settings to use AI transcription.",
+            'Please download at least one model to continue.',
             style: TextStyle(color: Colors.white),
           ),
           duration: const Duration(seconds: 3),
         ),
       );
+      return;
     }
     widget.onNext();
   }
@@ -818,16 +526,24 @@ class _LanguageModelPageState extends State<_LanguageModelPage> {
                 child: const Text('Back'),
               ),
               const Spacer(),
-              ElevatedButton(
-                onPressed: _onNextPressed,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _accentColor,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                ),
-                child: const Text('Next'),
-              ),
+              Builder(builder: (context) {
+                final hasModel = widget.modelManager != null &&
+                    widget.modelManager!.downloadedModels.isNotEmpty;
+                return ElevatedButton(
+                  onPressed: hasModel ? _onNextPressed : _onNextPressed,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor:
+                        hasModel ? _accentColor : Colors.white12,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.white12,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: Text(hasModel
+                      ? 'Next'
+                      : 'Download a model to continue'),
+                );
+              }),
             ],
           ),
           const SizedBox(height: 20),
@@ -957,7 +673,7 @@ class _LanguageModelPageState extends State<_LanguageModelPage> {
   }
 }
 
-// ─── Page 3: Permissions ─────────────────────────────────
+// ─── Page 2: Permissions ─────────────────────────────────
 
 class _PermissionsPage extends StatefulWidget {
   final PermissionService permissions;
@@ -1142,7 +858,7 @@ class _PermissionsPageState extends State<_PermissionsPage> {
   }
 }
 
-// ─── Page 4: Mic Setup ──────────────────────────────────
+// ─── Page 3: Mic Setup ──────────────────────────────────
 
 class _MicSetupPage extends StatefulWidget {
   final AudioDeviceService audioDevice;
@@ -1313,7 +1029,7 @@ class _MicSetupPageState extends State<_MicSetupPage> {
   }
 }
 
-// ─── Page 5: Shortcut Test ──────────────────────────────
+// ─── Page 4: Shortcut Test ──────────────────────────────
 
 class _ShortcutPage extends StatefulWidget {
   final HotkeyService hotkeyService;

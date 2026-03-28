@@ -11,8 +11,11 @@ import 'package:path/path.dart' as p;
 import 'services/model_manager.dart';
 import 'services/dictation_service.dart';
 import 'services/whisper_streaming_service.dart';
-import 'services/native_stt_service.dart';
 import 'services/stt_engine_manager.dart';
+import 'services/stt_transcriber.dart';
+import 'services/whisper_cpp_transcriber.dart';
+import 'services/sherpa_onnx_transcriber.dart';
+import 'services/sherpa_model_manager.dart';
 import 'services/permission_service.dart';
 import 'services/hotkey_service.dart';
 import 'services/audio_device_service.dart';
@@ -60,10 +63,11 @@ class VoiceInkHome extends StatefulWidget {
 
 class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
   late ModelManager _modelManager;
+  late SherpaModelManager _sherpaModelManager;
   late DictationService _dictation;
   final SttEngineManager _engineManager = SttEngineManager();
-  final NativeSttService _nativeStt = NativeSttService();
   late WhisperStreamingService _whisperStreaming;
+  SttTranscriber? _activeTranscriber;
   final PermissionService _permissions = PermissionService();
   final HotkeyService _hotkeyService = HotkeyService();
   final AudioDeviceService _audioDevice = AudioDeviceService();
@@ -90,10 +94,10 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
     windowManager.addListener(this);
     _hoverChannel.setMethodCallHandler(_handleHoverCall);
     _modelManager = ModelManager();
+    _sherpaModelManager = SherpaModelManager();
     _dictation = DictationService(modelManager: _modelManager);
     _whisperStreaming = WhisperStreamingService(modelManager: _modelManager);
     _engineManager.addListener(_onEngineChange);
-    _nativeStt.addListener(_onSttChange);
     _whisperStreaming.addListener(_onSttChange);
     _boot();
   }
@@ -187,7 +191,11 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
     try {
       await _engineManager.init();
       await _modelManager.init();
+      await _sherpaModelManager.init();
       debugPrint('[VoiceInk] Models: ${_modelManager.downloadedModels.length}');
+
+      // Create transcriber based on selected provider
+      await _createTranscriber();
 
       // Initialize database and new services
       await DatabaseService.instance.initialize();
@@ -197,13 +205,6 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
 
       await _dictation.init();
 
-      final nativeAvail = await NativeSttService.checkAvailability();
-      _engineManager.setNativeAvailable(nativeAvail);
-      debugPrint('[VoiceInk] Native STT available: $nativeAvail');
-
-      if (_engineManager.engine == SttEngine.native && nativeAvail) {
-        await _nativeStt.init();
-      }
       await _whisperStreaming.init();
 
       await _registerHotkeys();
@@ -302,7 +303,42 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
 
   // ───── Engine helpers ─────
 
+  /// Create and configure the appropriate transcriber based on selected provider.
+  Future<void> _createTranscriber() async {
+    _activeTranscriber?.dispose();
+
+    switch (_engineManager.provider) {
+      case SttProvider.whisperCpp:
+        final wt = WhisperCppTranscriber();
+        await wt.init();
+        _activeTranscriber = wt;
+        debugPrint('[VoiceInk] Whisper binary found: ${wt.isAvailable}');
+        if (wt.isAvailable) {
+          debugPrint('[VoiceInk] Whisper CLI: ${wt.cliPath}');
+        }
+        break;
+      case SttProvider.sherpaOnnx:
+        final st = SherpaOnnxTranscriber();
+        await st.init();
+        // Load selected sherpa model if available
+        final paths = _sherpaModelManager.selectedModelPaths;
+        if (paths != null && st.isAvailable) {
+          st.loadModel(paths);
+        }
+        _activeTranscriber = st;
+        debugPrint('[VoiceInk] Sherpa-ONNX available: ${st.isAvailable}');
+        break;
+    }
+
+    // Update services with new transcriber
+    if (_activeTranscriber != null) {
+      _whisperStreaming.setTranscriber(_activeTranscriber!);
+      _dictation.setTranscriber(_activeTranscriber!);
+    }
+  }
+
   void _onEngineChange() {
+    _createTranscriber();
     if (mounted) setState(() {});
   }
 
@@ -356,37 +392,22 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
   }
 
   Future<void> _startActiveEngine() async {
-    switch (_engineManager.engine) {
-      case SttEngine.native:
-        if (!_nativeStt.initialized) await _nativeStt.init();
-        await _nativeStt.startListening();
-        break;
-      case SttEngine.model:
-        if (_whisperStreaming.isWhisperAvailable &&
-            _modelManager.selectedModelPath != null) {
-          await _whisperStreaming.startRecording(
-            device: _audioDevice.selectedDevice,
-          );
-        } else {
-          await _dictation.startRecording();
-        }
-        break;
+    if (_whisperStreaming.isWhisperAvailable &&
+        _modelManager.selectedModelPath != null) {
+      await _whisperStreaming.startRecording(
+        device: _audioDevice.selectedDevice,
+      );
+    } else {
+      await _dictation.startRecording();
     }
     if (mounted) setState(() {});
   }
 
   Future<void> _stopActiveEngine() async {
-    switch (_engineManager.engine) {
-      case SttEngine.native:
-        await _nativeStt.stopListening();
-        break;
-      case SttEngine.model:
-        if (_whisperStreaming.isRecording) {
-          await _whisperStreaming.stopRecording();
-        } else if (_dictation.isRecording) {
-          await _dictation.stopRecording();
-        }
-        break;
+    if (_whisperStreaming.isRecording) {
+      await _whisperStreaming.stopRecording();
+    } else if (_dictation.isRecording) {
+      await _dictation.stopRecording();
     }
     if (mounted) setState(() {});
   }
@@ -495,12 +516,12 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
     if (_toggleHotKey != null) hotKeyManager.unregister(_toggleHotKey!);
     _permissions.dispose();
     _dictation.dispose();
-    _nativeStt.removeListener(_onSttChange);
-    _nativeStt.dispose();
     _whisperStreaming.removeListener(_onSttChange);
     _whisperStreaming.dispose();
     _engineManager.removeListener(_onEngineChange);
     _engineManager.dispose();
+    _activeTranscriber?.dispose();
+    _sherpaModelManager.dispose();
     _hotkeyService.dispose();
     _audioDevice.dispose();
     super.dispose();
@@ -536,7 +557,7 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
 
   Widget _buildCapsule() {
     return ListenableBuilder(
-      listenable: Listenable.merge([_dictation, _nativeStt, _whisperStreaming, _engineManager]),
+      listenable: Listenable.merge([_dictation, _whisperStreaming, _engineManager]),
       builder: (context, _) {
         return GestureDetector(
           onPanStart: (_) => windowManager.startDragging(),
@@ -565,6 +586,7 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
         children: [
           SettingsScreen(
             modelManager: _modelManager,
+            sherpaModelManager: _sherpaModelManager,
             dictationService: _dictation,
             engineManager: _engineManager,
             whisperStreaming: _whisperStreaming,

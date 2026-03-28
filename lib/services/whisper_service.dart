@@ -36,6 +36,7 @@ class WhisperService {
         '-l', language,
         '-t', '$threads',
         '--no-prints',
+        '--no-speech-thold', '0.3',
       ],
       environment: Platform.isMacOS
           ? {'GGML_METAL_PATH_RESOURCES': File(cliPath!).parent.path}

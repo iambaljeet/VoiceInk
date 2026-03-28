@@ -10,7 +10,8 @@ import 'package:record/record.dart';
 import 'text_cleanup_service.dart';
 import 'text_injection_service.dart';
 import 'model_manager.dart';
-import 'whisper_service.dart';
+import 'stt_transcriber.dart';
+import 'whisper_cpp_transcriber.dart';
 import 'dictionary_service.dart';
 import 'stats_service.dart';
 import '../models/writing_style.dart';
@@ -29,7 +30,7 @@ class WhisperStreamingService extends ChangeNotifier {
   final TextInjectionService _injection = TextInjectionService();
   final AudioRecorder _recorder = AudioRecorder();
   final ModelManager modelManager;
-  WhisperService? _whisper;
+  SttTranscriber? _transcriber;
 
   // Sliding window parameters (matching whisper.cpp stream defaults)
   static const int _sampleRate = 16000;
@@ -41,13 +42,14 @@ class WhisperStreamingService extends ChangeNotifier {
   static const int _keepSamples = _sampleRate * _keepMs ~/ 1000;
 
   // VAD parameters
-  static const double _vadThreshold = 0.008; // RMS below this = silence
+  static const double _vadThreshold = 0.005; // RMS below this = silence (lowered for sensitivity)
   static const int _endpointSilenceMs = 2000; // 2s silence = commit endpoint
 
   // Audio state
   StreamSubscription? _audioSubscription;
   final List<double> _audioBuffer = [];
   String? _tempDir;
+  String _language = 'auto'; // Language for transcription
 
   // Transcription state
   bool _isRecording = false;
@@ -67,50 +69,39 @@ class WhisperStreamingService extends ChangeNotifier {
   String get currentText => _committedText + _currentText;
   String? get errorMessage => _errorMessage;
 
-  WhisperStreamingService({required this.modelManager});
+  WhisperStreamingService({required this.modelManager, SttTranscriber? transcriber})
+      : _transcriber = transcriber;
 
   Future<void> init() async {
     final dir = await getTemporaryDirectory();
     _tempDir = p.join(dir.path, 'voice_ink_streaming');
     await Directory(_tempDir!).create(recursive: true);
-    _whisper = await _resolveWhisper();
-  }
-
-  Future<WhisperService?> _resolveWhisper() async {
-    final execPath = Platform.resolvedExecutable;
-    final appDir = File(execPath).parent.path;
-    final ext = Platform.isWindows ? '.exe' : '';
-
-    final candidates = [
-      p.join(appDir, '..', 'Resources', 'whisper-cli$ext'),
-      p.join(appDir, 'whisper-cli$ext'),
-    ];
-    candidates.add(p.join(Directory.current.path, 'native', 'whisper.cpp', 'build', 'bin', 'whisper-cli$ext'));
-
-    for (final path in candidates) {
-      if (await File(path).exists()) return WhisperService(path);
+    // If no transcriber was injected, create a default WhisperCppTranscriber
+    if (_transcriber == null) {
+      final wt = WhisperCppTranscriber();
+      await wt.init();
+      _transcriber = wt;
     }
-
-    try {
-      final cmd = Platform.isWindows ? 'where' : 'which';
-      final result = await Process.run(cmd, ['whisper-cli']);
-      if (result.exitCode == 0) {
-        return WhisperService((result.stdout as String).trim());
-      }
-    } catch (_) {}
-
-    return null;
+    // Load saved language preference
+    final prefs = await SharedPreferences.getInstance();
+    _language = prefs.getString('whisper_language') ?? 'auto';
   }
 
-  bool get isWhisperAvailable => _whisper != null;
+  /// Replace the transcriber at runtime (e.g., when switching providers).
+  void setTranscriber(SttTranscriber transcriber) {
+    _transcriber = transcriber;
+    notifyListeners();
+  }
+
+  bool get isWhisperAvailable => _transcriber?.isAvailable ?? false;
 
   /// Start recording. Optionally pass a specific [device] for the mic input.
   Future<void> startRecording({InputDevice? device}) async {
     if (_isRecording) return;
     _errorMessage = null;
 
-    if (_whisper == null) {
-      _errorMessage = 'Whisper not available. Check installation.';
+    if (_transcriber == null || !_transcriber!.isAvailable) {
+      _errorMessage = 'Speech transcriber not available. Check installation.';
       notifyListeners();
       return;
     }
@@ -215,9 +206,10 @@ class WhisperStreamingService extends ChangeNotifier {
       final wavPath = p.join(_tempDir!, 'partial.wav');
       await _writeWav(wavPath, windowSamples, _sampleRate);
 
-      final rawText = await _whisper!.transcribe(
+      final rawText = await _transcriber!.transcribe(
         audioPath: wavPath,
         modelPath: modelManager.selectedModelPath!,
+        language: _language,
       );
 
       final trimmed = rawText.trim();
@@ -262,9 +254,10 @@ class WhisperStreamingService extends ChangeNotifier {
       final wavPath = p.join(_tempDir!, 'endpoint.wav');
       await _writeWav(wavPath, samples, _sampleRate);
 
-      final rawText = await _whisper!.transcribe(
+      final rawText = await _transcriber!.transcribe(
         audioPath: wavPath,
         modelPath: modelManager.selectedModelPath!,
+        language: _language,
       );
 
       final trimmed = rawText.trim();
@@ -335,9 +328,10 @@ class WhisperStreamingService extends ChangeNotifier {
           final wavPath = p.join(_tempDir!, 'final.wav');
           await _writeWav(wavPath, samples, _sampleRate);
 
-          final rawText = await _whisper!.transcribe(
+          final rawText = await _transcriber!.transcribe(
             audioPath: wavPath,
             modelPath: modelManager.selectedModelPath!,
+            language: _language,
           );
 
           final trimmed = rawText.trim();

@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'audio_capture_service.dart';
-import 'whisper_service.dart';
+import 'stt_transcriber.dart';
+import 'whisper_cpp_transcriber.dart';
 import 'text_cleanup_service.dart';
 import 'text_injection_service.dart';
 import 'model_manager.dart';
@@ -21,13 +21,14 @@ class DictationService extends ChangeNotifier {
   final TextCleanupService _cleanup = TextCleanupService();
   final TextInjectionService _injection = TextInjectionService();
   final ModelManager modelManager;
-  WhisperService? _whisper;
+  SttTranscriber? _transcriber;
 
   DictationState _state = DictationState.idle;
   String _lastTranscription = '';
   String? _errorMessage;
   Timer? _chunkTimer;
   bool _transcribing = false;
+  String _language = 'auto'; // Language for transcription
 
   // Streaming config
   static const _chunkDuration = Duration(seconds: 3);
@@ -43,18 +44,24 @@ class DictationService extends ChangeNotifier {
   DictionaryService get dictionary => DictionaryService.instance;
   StatsService get stats => StatsService.instance;
 
-  DictationService({required this.modelManager});
+  DictationService({required this.modelManager, SttTranscriber? transcriber})
+      : _transcriber = transcriber;
 
   Future<void> init() async {
     await _audio.init();
 
-    // Desktop: use whisper CLI binary
-    final whisperPath = await _resolveWhisperPath();
-    if (whisperPath != null) {
-      _whisper = WhisperService(whisperPath);
-      debugPrint('[VoiceInk] Whisper binary found at: $whisperPath');
+    // If no transcriber was injected, create a default WhisperCppTranscriber
+    if (_transcriber == null) {
+      final wt = WhisperCppTranscriber();
+      await wt.init();
+      _transcriber = wt;
+      if (wt.isAvailable) {
+        debugPrint('[VoiceInk] Whisper binary found at: ${wt.cliPath}');
+      } else {
+        debugPrint('[VoiceInk] WARNING: whisper-cli not found!');
+      }
     } else {
-      debugPrint('[VoiceInk] WARNING: whisper-cli not found!');
+      debugPrint('[VoiceInk] Using injected transcriber: ${_transcriber!.providerName}');
     }
 
     final prefs = await SharedPreferences.getInstance();
@@ -62,6 +69,7 @@ class DictationService extends ChangeNotifier {
     _cleanup.skipNonSpeech = prefs.getBool('cleanup_nonspeech') ?? true;
     _cleanup.convertPunctuation = prefs.getBool('cleanup_punctuation') ?? true;
     _cleanup.autoCapitalize = prefs.getBool('cleanup_capitalize') ?? true;
+    _language = prefs.getString('whisper_language') ?? 'auto';
 
     writingStyle = WritingStyle.fromString(prefs.getString('writing_style') ?? 'clean');
     dictionary.isEnabled = prefs.getBool('dictionary_enabled') ?? false;
@@ -72,31 +80,10 @@ class DictationService extends ChangeNotifier {
     }
   }
 
-  Future<String?> _resolveWhisperPath() async {
-    final execPath = Platform.resolvedExecutable;
-    final appDir = File(execPath).parent.path;
-    final ext = Platform.isWindows ? '.exe' : '';
-
-    final candidates = [
-      p.join(appDir, '..', 'Resources', 'whisper-cli$ext'),
-      p.join(appDir, 'whisper-cli$ext'),
-    ];
-
-    final cwd = Directory.current.path;
-    candidates.add(p.join(cwd, 'native', 'whisper.cpp', 'build', 'bin', 'whisper-cli$ext'));
-
-    for (final path in candidates) {
-      if (await File(path).exists()) return path;
-    }
-
-    // Check PATH
-    try {
-      final cmd = Platform.isWindows ? 'where' : 'which';
-      final result = await Process.run(cmd, ['whisper-cli']);
-      if (result.exitCode == 0) return (result.stdout as String).trim();
-    } catch (_) {}
-
-    return null;
+  /// Replace the transcriber at runtime (e.g., when switching providers).
+  void setTranscriber(SttTranscriber transcriber) {
+    _transcriber = transcriber;
+    notifyListeners();
   }
 
   Future<bool> hasPermission() async {
@@ -126,8 +113,8 @@ class DictationService extends ChangeNotifier {
   Future<void> _startStreaming() async {
     _errorMessage = null;
 
-    if (_whisper == null) {
-      _errorMessage = 'Whisper binary not found. Check installation.';
+    if (_transcriber == null || !_transcriber!.isAvailable) {
+      _errorMessage = 'Speech transcriber not available. Check installation.';
       notifyListeners();
       return;
     }
@@ -173,9 +160,10 @@ class DictationService extends ChangeNotifier {
         final fileSize = await File(audioPath).length();
         if (fileSize > 1000) { // skip tiny files (silence)
           try {
-            final rawText = await _whisper!.transcribe(
+            final rawText = await _transcriber!.transcribe(
               audioPath: audioPath,
               modelPath: modelManager.selectedModelPath!,
+              language: _language,
             );
 
             final cleaned = await _processTranscription(rawText);
@@ -224,9 +212,10 @@ class DictationService extends ChangeNotifier {
       if (await File(audioPath).exists()) {
         final fileSize = await File(audioPath).length();
         if (fileSize > 1000) {
-          final rawText = await _whisper!.transcribe(
+          final rawText = await _transcriber!.transcribe(
             audioPath: audioPath,
             modelPath: modelManager.selectedModelPath!,
+            language: _language,
           );
           final cleaned = await _processTranscription(rawText);
           if (cleaned.isNotEmpty) {

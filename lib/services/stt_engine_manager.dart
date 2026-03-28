@@ -1,77 +1,82 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Available STT engine types.
-enum SttEngine {
-  /// Platform native STT (Apple SFSpeechRecognizer / Google SpeechRecognizer).
-  /// Zero download, instant, real-time. Quality depends on OS.
-  native,
+/// Available STT provider types.
+enum SttProvider {
+  /// whisper.cpp CLI-based transcription. Needs whisper-cli binary + model download.
+  whisperCpp,
 
-  /// AI model-based streaming (whisper.cpp on all platforms).
-  /// Needs whisper model download. Higher quality, fully offline guaranteed.
-  model,
+  /// Sherpa-ONNX based transcription. Uses native Dart FFI. Supports 1600+ languages.
+  sherpaOnnx,
 }
 
-extension SttEngineX on SttEngine {
+extension SttProviderX on SttProvider {
   String get label {
     switch (this) {
-      case SttEngine.native:
-        return 'System Speech';
-      case SttEngine.model:
-        return 'AI Model (Whisper)';
+      case SttProvider.whisperCpp:
+        return 'Whisper.cpp';
+      case SttProvider.sherpaOnnx:
+        return 'Sherpa-ONNX';
     }
   }
 
   String get description {
     switch (this) {
-      case SttEngine.native:
-        return 'Uses built-in speech engine. No download needed. Real-time.';
-      case SttEngine.model:
-        return 'Uses whisper.cpp model. Download required. Higher quality.';
+      case SttProvider.whisperCpp:
+        return 'High-quality offline transcription using whisper.cpp. Requires CLI binary.';
+      case SttProvider.sherpaOnnx:
+        return 'Cross-platform offline STT with native Dart FFI. 1600+ languages.';
     }
   }
 
   String get icon {
     switch (this) {
-      case SttEngine.native:
-        return '🗣️';
-      case SttEngine.model:
+      case SttProvider.whisperCpp:
         return '🧠';
+      case SttProvider.sherpaOnnx:
+        return '🔊';
     }
   }
 }
 
-/// Manages STT engine selection and persistence.
+/// Manages STT provider selection and persistence.
 class SttEngineManager extends ChangeNotifier {
-  static const _prefKey = 'stt_engine';
+  static const _prefKey = 'stt_provider';
 
-  SttEngine _engine = SttEngine.native;
-  bool _nativeAvailable = false;
+  SttProvider _provider = SttProvider.whisperCpp;
 
-  SttEngine get engine => _engine;
-  bool get nativeAvailable => _nativeAvailable;
+  SttProvider get provider => _provider;
+
+  /// For backward compatibility — alias for provider
+  SttProvider get engine => _provider;
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(_prefKey);
-    if (saved == 'model') {
-      _engine = SttEngine.model;
+    // Also check legacy key for migration
+    if (saved != null) {
+      _provider = SttProvider.values.firstWhere(
+        (p) => p.name == saved,
+        orElse: () => SttProvider.whisperCpp,
+      );
     } else {
-      _engine = SttEngine.native;
+      // Check legacy key
+      final legacy = prefs.getString('stt_engine');
+      if (legacy == 'model' || legacy == null) {
+        _provider = SttProvider.whisperCpp;
+      }
     }
     notifyListeners();
   }
 
-  void setNativeAvailable(bool available) {
-    _nativeAvailable = available;
-    notifyListeners();
-  }
-
-  Future<void> setEngine(SttEngine engine) async {
-    if (_engine == engine) return;
-    _engine = engine;
+  Future<void> setProvider(SttProvider provider) async {
+    if (_provider == provider) return;
+    _provider = provider;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefKey, engine.name);
+    await prefs.setString(_prefKey, provider.name);
   }
+
+  /// For backward compatibility
+  Future<void> setEngine(SttProvider provider) => setProvider(provider);
 }
