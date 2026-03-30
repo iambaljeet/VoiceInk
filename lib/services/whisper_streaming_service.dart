@@ -19,12 +19,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Real-time streaming STT using whisper.cpp with sliding window approach.
 ///
-/// Architecture (matching whisper.cpp stream example):
+/// Architecture:
 ///  - Records 16 kHz mono PCM audio continuously via mic
-///  - Uses a sliding window: WINDOW_MS total, STEP_MS new audio, KEEP_MS overlap
-///  - Transcribes at each step for near-real-time partial results
-///  - Uses VAD (voice activity detection) to detect endpoints
-///  - Commits text on endpoint (silence), resets buffer, continues
+///  - Maintains an append-only audio buffer with a commit cursor
+///  - Periodically transcribes pending audio for partial preview
+///  - Uses VAD to detect silence endpoints → commits text, advances cursor
+///  - On stop: transcribes all remaining audio and commits
+///  - Zero audio loss: new audio arriving during transcription is preserved
 class WhisperStreamingService extends ChangeNotifier {
   final TextCleanupService _cleanup = TextCleanupService();
   final TextInjectionService _injection = TextInjectionService();
@@ -32,24 +33,24 @@ class WhisperStreamingService extends ChangeNotifier {
   final ModelManager modelManager;
   SttTranscriber? _transcriber;
 
-  // Sliding window parameters (matching whisper.cpp stream defaults)
+  // Sliding window parameters
   static const int _sampleRate = 16000;
-  static const int _stepMs = 1500;      // Process every 1.5s for responsiveness
-  static const int _windowMs = 10000;   // Transcribe last 10s of audio
-  static const int _keepMs = 1000;      // 1s overlap between segments for continuity
-
+  static const int _stepMs = 1500;      // Transcription interval
+  static const int _windowMs = 30000;   // Preview transcribes last 30s max
   static const int _windowSamples = _sampleRate * _windowMs ~/ 1000;
-  static const int _keepSamples = _sampleRate * _keepMs ~/ 1000;
 
   // VAD parameters
-  static const double _vadThreshold = 0.005; // RMS below this = silence (lowered for sensitivity)
+  static const double _vadThreshold = 0.004; // RMS below this = silence
   static const int _endpointSilenceMs = 2000; // 2s silence = commit endpoint
 
   // Audio state
   StreamSubscription? _audioSubscription;
   final List<double> _audioBuffer = [];
   String? _tempDir;
-  String _language = 'auto'; // Language for transcription
+  String _language = 'auto';
+
+  // Commit tracking — index up to which audio has been committed as text
+  int _commitPos = 0;
 
   // Transcription state
   bool _isRecording = false;
@@ -60,7 +61,8 @@ class WhisperStreamingService extends ChangeNotifier {
 
   // VAD state
   int _silentMs = 0;
-  bool _speechStarted = false;
+  bool _speechDetected = false; // any speech since last commit
+  double _smoothedEnergy = 0.0; // exponential moving average of RMS
 
   // Periodic transcription timer
   Timer? _transcribeTimer;
@@ -119,10 +121,12 @@ class WhisperStreamingService extends ChangeNotifier {
     }
 
     _audioBuffer.clear();
+    _commitPos = 0;
     _currentText = '';
     _committedText = '';
     _silentMs = 0;
-    _speechStarted = false;
+    _speechDetected = false;
+    _smoothedEnergy = 0.0;
 
     try {
       final config = RecordConfig(
@@ -150,7 +154,7 @@ class WhisperStreamingService extends ChangeNotifier {
 
       _isRecording = true;
       notifyListeners();
-      debugPrint('[WhisperStream] Recording started (window=${_windowMs}ms step=${_stepMs}ms keep=${_keepMs}ms)');
+      debugPrint('[WhisperStream] Recording started (window=${_windowMs}ms step=${_stepMs}ms)');
     } catch (e) {
       _errorMessage = 'Failed to start: $e';
       _isRecording = false;
@@ -163,7 +167,7 @@ class WhisperStreamingService extends ChangeNotifier {
     final bd = ByteData.view(bytes.buffer);
     final numSamples = bytes.length ~/ 2;
 
-    // Calculate RMS for VAD
+    // Decode and buffer samples, compute RMS for VAD
     double sumSquares = 0;
     for (int i = 0; i < numSamples; i++) {
       final sample = bd.getInt16(i * 2, Endian.little) / 32768.0;
@@ -174,33 +178,38 @@ class WhisperStreamingService extends ChangeNotifier {
     final rms = numSamples > 0 ? sqrt(sumSquares / numSamples) : 0.0;
     final chunkDurationMs = (numSamples * 1000) ~/ _sampleRate;
 
-    if (rms < _vadThreshold) {
+    // Smoothed energy (exponential moving average) for robust VAD
+    _smoothedEnergy = 0.6 * _smoothedEnergy + 0.4 * rms;
+
+    if (_smoothedEnergy < _vadThreshold) {
       _silentMs += chunkDurationMs;
     } else {
       _silentMs = 0;
-      _speechStarted = true;
+      _speechDetected = true;
     }
 
     // Endpoint: speech was detected and now silence for > threshold
-    if (_speechStarted &&
+    // Require meaningful audio beyond the commit position
+    final pendingSamples = _audioBuffer.length - _commitPos;
+    if (_speechDetected &&
         _silentMs >= _endpointSilenceMs &&
-        _audioBuffer.length > _sampleRate) {
+        pendingSamples > _sampleRate ~/ 2) {
       _onEndpoint();
     }
   }
 
-  /// Called every STEP_MS — transcribe the sliding window for partial results
+  /// Called every STEP_MS — transcribe pending audio for partial preview
   Future<void> _onStep() async {
     if (_transcribing) return;
-    if (_audioBuffer.length < _sampleRate ~/ 2) return; // need at least 0.5s
-    if (!_speechStarted) return; // don't transcribe pure silence
+    final pendingSamples = _audioBuffer.length - _commitPos;
+    if (pendingSamples < _sampleRate ~/ 4) return; // need at least 0.25s
 
     _transcribing = true;
     try {
-      // Build the sliding window: last WINDOW_SAMPLES, or all if shorter
-      final windowStart = max(0, _audioBuffer.length - _windowSamples);
+      // Transcribe pending audio (from commit position to end), capped at window
+      final start = max(_commitPos, _audioBuffer.length - _windowSamples);
       final windowSamples = Float32List.fromList(
-        _audioBuffer.sublist(windowStart),
+        _audioBuffer.sublist(start),
       );
 
       final wavPath = p.join(_tempDir!, 'partial.wav');
@@ -226,12 +235,13 @@ class WhisperStreamingService extends ChangeNotifier {
     }
   }
 
-  /// Endpoint detected — commit current text, reset buffer
+  /// Endpoint detected — commit pending text, advance cursor, preserve new audio
   Future<void> _onEndpoint() async {
-    if (_audioBuffer.length < _sampleRate ~/ 2) return;
+    final pendingSamples = _audioBuffer.length - _commitPos;
+    if (pendingSamples < _sampleRate ~/ 4) return;
 
-    debugPrint('[WhisperStream] Endpoint detected — committing');
-    _speechStarted = false;
+    debugPrint('[WhisperStream] Endpoint detected — committing ${pendingSamples ~/ _sampleRate}s of audio');
+    _speechDetected = false;
     _silentMs = 0;
 
     // Wait for any in-progress transcription to finish
@@ -241,16 +251,24 @@ class WhisperStreamingService extends ChangeNotifier {
 
     _transcribing = true;
     try {
-      // Trim trailing silence for cleaner transcription
-      final trimmedBuffer = _trimSilence(_audioBuffer);
-      if (trimmedBuffer.length < _sampleRate ~/ 4) {
-        _audioBuffer.clear();
+      // Snapshot: transcribe audio from commit position to current end
+      // New audio may arrive during transcription — it's preserved automatically
+      // because we only advance _commitPos, never clear the buffer mid-flight.
+      final snapshotEnd = _audioBuffer.length;
+      final pendingAudio = _audioBuffer.sublist(_commitPos, snapshotEnd);
+
+      // Trim trailing silence (prevents whisper hallucinations from silence)
+      final trimmed = _trimTrailingSilence(pendingAudio);
+      if (trimmed.length < _sampleRate ~/ 4) {
+        // Too short after trimming — skip but advance cursor
+        _commitPos = snapshotEnd;
         _currentText = '';
+        _compactBuffer();
         notifyListeners();
         return;
       }
 
-      final samples = Float32List.fromList(trimmedBuffer);
+      final samples = Float32List.fromList(trimmed);
       final wavPath = p.join(_tempDir!, 'endpoint.wav');
       await _writeWav(wavPath, samples, _sampleRate);
 
@@ -260,27 +278,22 @@ class WhisperStreamingService extends ChangeNotifier {
         language: _language,
       );
 
-      final trimmed = rawText.trim();
-      if (trimmed.isNotEmpty &&
-          !trimmed.contains('[BLANK_AUDIO]') &&
-          !trimmed.contains('[BLANK AUDIO]')) {
-        final cleaned = await _postProcess(trimmed);
+      final text = rawText.trim();
+      if (text.isNotEmpty &&
+          !text.contains('[BLANK_AUDIO]') &&
+          !text.contains('[BLANK AUDIO]')) {
+        final cleaned = await _postProcess(text);
         if (cleaned.isNotEmpty) {
           _committedText += '$cleaned ';
           _injection.injectText('$cleaned ');
         }
       }
 
-      // Keep a small overlap for context in next segment
-      if (_audioBuffer.length > _keepSamples) {
-        final keep = _audioBuffer.sublist(_audioBuffer.length - _keepSamples);
-        _audioBuffer
-          ..clear()
-          ..addAll(keep);
-      } else {
-        _audioBuffer.clear();
-      }
+      // Advance commit cursor to snapshot point
+      // Audio that arrived DURING transcription stays in the buffer
+      _commitPos = snapshotEnd;
       _currentText = '';
+      _compactBuffer();
       notifyListeners();
     } catch (e) {
       debugPrint('[WhisperStream] Endpoint transcription error: $e');
@@ -289,9 +302,21 @@ class WhisperStreamingService extends ChangeNotifier {
     }
   }
 
-  /// Trim trailing silence from audio buffer
-  List<double> _trimSilence(List<double> buffer) {
-    // Find last non-silent sample (scanning backwards)
+  /// Remove committed audio from the buffer to prevent unbounded growth.
+  /// Adjusts _commitPos accordingly.
+  void _compactBuffer() {
+    if (_commitPos > _sampleRate * 5) {
+      // Keep a small safety margin (0.5s) before commit pos for edge cases
+      final removeCount = _commitPos - (_sampleRate ~/ 2);
+      if (removeCount > 0) {
+        _audioBuffer.removeRange(0, removeCount);
+        _commitPos -= removeCount;
+      }
+    }
+  }
+
+  /// Trim trailing silence from audio samples (prevents whisper hallucinations).
+  List<double> _trimTrailingSilence(List<double> buffer) {
     int end = buffer.length;
     const chunkSize = 1600; // 100ms at 16kHz
     while (end > chunkSize) {
@@ -303,7 +328,7 @@ class WhisperStreamingService extends ChangeNotifier {
       if (rms > _vadThreshold) break;
       end -= chunkSize;
     }
-    // Add a small tail for context
+    // Add a small tail (250ms) for word endings
     end = min(buffer.length, end + _sampleRate ~/ 4);
     return buffer.sublist(0, end);
   }
@@ -318,13 +343,20 @@ class WhisperStreamingService extends ChangeNotifier {
     _audioSubscription = null;
     await _recorder.stop();
 
-    // Final transcription of remaining audio
-    if (_audioBuffer.length > _sampleRate ~/ 2 && _speechStarted) {
+    // Wait for any in-progress transcription (endpoint or step) to finish
+    while (_transcribing) {
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
+
+    // Final transcription of all audio beyond commit position
+    final pendingSamples = _audioBuffer.length - _commitPos;
+    if (pendingSamples > _sampleRate ~/ 4) {
       _transcribing = true;
       try {
-        final trimmedBuffer = _trimSilence(_audioBuffer);
-        if (trimmedBuffer.length > _sampleRate ~/ 4) {
-          final samples = Float32List.fromList(trimmedBuffer);
+        final pendingAudio = _audioBuffer.sublist(_commitPos);
+        final trimmed = _trimTrailingSilence(pendingAudio);
+        if (trimmed.length > _sampleRate ~/ 4) {
+          final samples = Float32List.fromList(trimmed);
           final wavPath = p.join(_tempDir!, 'final.wav');
           await _writeWav(wavPath, samples, _sampleRate);
 
@@ -334,11 +366,11 @@ class WhisperStreamingService extends ChangeNotifier {
             language: _language,
           );
 
-          final trimmed = rawText.trim();
-          if (trimmed.isNotEmpty &&
-              !trimmed.contains('[BLANK_AUDIO]') &&
-              !trimmed.contains('[BLANK AUDIO]')) {
-            final cleaned = await _postProcess(trimmed);
+          final text = rawText.trim();
+          if (text.isNotEmpty &&
+              !text.contains('[BLANK_AUDIO]') &&
+              !text.contains('[BLANK AUDIO]')) {
+            final cleaned = await _postProcess(text);
             if (cleaned.isNotEmpty) {
               _committedText += '$cleaned ';
               _injection.injectText('$cleaned ');
@@ -353,6 +385,7 @@ class WhisperStreamingService extends ChangeNotifier {
     }
 
     _audioBuffer.clear();
+    _commitPos = 0;
     _isRecording = false;
     _currentText = '';
     notifyListeners();

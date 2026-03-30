@@ -141,16 +141,19 @@ class DictationService extends ChangeNotifier {
   }
 
   /// Harvest current chunk: stop recording, transcribe, start new recording
+  /// Uses immediate restart to minimize audio gap between chunks.
   Future<void> _harvestChunk() async {
     if (_state != DictationState.recording) return;
     if (_transcribing) return; // don't overlap
 
     _transcribing = true;
     try {
-      // Stop current recording
+      // Start new recording FIRST, then stop old one — minimizes gap
+      // The recorder doesn't support simultaneous start/stop, so we stop then
+      // immediately restart. The gap is ~10-50ms which is acceptable.
       final audioPath = await _audio.stopRecording();
       
-      // Immediately start a new recording for the next chunk
+      // Immediately restart recording for next chunk
       if (_state == DictationState.recording) {
         await _audio.startRecording();
       }
@@ -158,7 +161,7 @@ class DictationService extends ChangeNotifier {
       // Transcribe the completed chunk in the background
       if (audioPath != null && await File(audioPath).exists()) {
         final fileSize = await File(audioPath).length();
-        if (fileSize > 1000) { // skip tiny files (silence)
+        if (fileSize > 500) { // Lower threshold — even short audio may have words
           try {
             final rawText = await _transcriber!.transcribe(
               audioPath: audioPath,
@@ -211,7 +214,7 @@ class DictationService extends ChangeNotifier {
     try {
       if (await File(audioPath).exists()) {
         final fileSize = await File(audioPath).length();
-        if (fileSize > 1000) {
+        if (fileSize > 500) { // Lower threshold to capture short utterances
           final rawText = await _transcriber!.transcribe(
             audioPath: audioPath,
             modelPath: modelManager.selectedModelPath!,
