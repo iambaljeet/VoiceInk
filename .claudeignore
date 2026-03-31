@@ -1,0 +1,59 @@
+# Build artifacts (5GB+ wasted tokens)
+build/
+.dart_tool/
+.build/
+.buildlog/
+
+# Binary/compiled artifacts
+*.dmg
+*.app
+*.dSYM
+*.o
+*.a
+*.dylib
+*.so
+*.exe
+
+# Native build intermediates
+native/whisper.cpp/build/
+native/whisper.cpp/.build/
+native/**/build/
+native/**/*.o
+native/**/*.a
+
+# IDE & editor
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Package manager
+.pub-cache/
+.packages
+pubspec.lock
+
+# macOS & system
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Flutter generated
+**/doc/api/
+.flutter-plugins-dependencies
+.metadata
+**/*.g.dart
+**/*.freezed.dart
+
+# Logs
+*.log
+flutter_01.log
+
+# Git
+.git/
+
+# Large release files
+*.dmg
+rw.*.dmg
+VoiceInk*.dmg
