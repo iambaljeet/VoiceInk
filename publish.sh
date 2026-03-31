@@ -76,6 +76,40 @@ read_current_config() {
     CURRENT_BUILD=$(echo "$CURRENT_VERSION" | cut -d+ -f2)
 }
 
+# ─── Auto-increment version (for quick Build & Publish) ─────────────────────
+
+auto_increment_version() {
+    read_current_config
+
+    # Parse current semver parts
+    local major minor patch
+    major=$(echo "$CURRENT_SEMVER" | cut -d. -f1)
+    minor=$(echo "$CURRENT_SEMVER" | cut -d. -f2)
+    patch=$(echo "$CURRENT_SEMVER" | cut -d. -f3)
+
+    # Increment patch version and build number
+    patch=$((patch + 1))
+    local new_build=$((CURRENT_BUILD + 1))
+    local new_semver="${major}.${minor}.${patch}"
+    local new_version="${new_semver}+${new_build}"
+
+    info "Auto-incrementing version: ${CURRENT_VERSION} → ${new_version}"
+
+    # Update pubspec.yaml
+    sed -i '' "s/^version:.*/version: $new_version/" pubspec.yaml
+
+    # Update app_config.dart
+    sed -i '' "s/static const String appVersion = '.*'/static const String appVersion = '$new_semver'/" \
+        lib/config/app_config.dart
+    sed -i '' "s/static const String appBuildNumber = '.*'/static const String appBuildNumber = '$new_build'/" \
+        lib/config/app_config.dart
+
+    log "Version updated to ${new_version}"
+
+    # Re-read so the rest of the pipeline sees the new values
+    read_current_config
+}
+
 # ─── Option 2: Edit App Information ──────────────────────────────────────────
 
 edit_app_info() {
@@ -491,12 +525,14 @@ Since the app is not code-signed with an Apple Developer certificate:
 
 ## Highlights
 
-- Push-to-talk voice dictation with configurable hotkeys
-- 9 Whisper AI models (75 MB to 1.6 GB)
+- Push-to-talk voice dictation — hold fn key (default) or configurable hotkeys
+- Dual STT engines: Whisper.cpp (CLI) and Sherpa-ONNX (native FFI)
+- 9+ Whisper AI models (75 MB to 1.6 GB) plus ONNX models
 - 34 language support
 - Custom dictionary with auto-correction
 - Writing styles (Verbatim, Clean, Formal, Chat)
 - Stats & streaks tracking
+- Non-intrusive floating pill indicator with click-through transparency
 - 100% offline — no data ever leaves your device
 - No accounts, no ads, no analytics
 EOF
@@ -803,8 +839,8 @@ main() {
 
     echo -e "${BOLD}What would you like to do?${NC}"
     echo ""
-    echo "  1) Build & Publish"
-    echo "     Build macOS DMG, package Windows ZIP, publish to GitHub Releases"
+    echo "  1) Build & Publish (auto-increment version)"
+    echo "     Auto-bump patch version + build number, build, and publish"
     echo ""
     echo "  2) Edit App Info & Publish"
     echo "     Update name, version, icons — then build & publish"
@@ -819,6 +855,7 @@ main() {
     case "$CHOICE" in
         1)
             preflight
+            auto_increment_version
             build_macos
             build_windows
             update_website

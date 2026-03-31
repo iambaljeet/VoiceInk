@@ -1100,10 +1100,23 @@ class _ShortcutPageState extends State<_ShortcutPage> {
           const SizedBox(height: 20),
 
           // ── Mode toggle ──
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
+              // fn key mode is macOS-only
+              if (Platform.isMacOS)
+                _buildModeChip(
+                  label: 'Fn Key',
+                  selected: hs.mode == HotkeyMode.fnKey,
+                  onTap: () async {
+                    _tested = false;
+                    await hs.setMode(HotkeyMode.fnKey);
+                    await _registerTestHandler();
+                  },
+                ),
               _buildModeChip(
-                label: 'Single Key',
+                label: 'Function Key',
                 selected: hs.mode == HotkeyMode.singleKey,
                 onTap: () async {
                   _tested = false;
@@ -1111,7 +1124,6 @@ class _ShortcutPageState extends State<_ShortcutPage> {
                   await _registerTestHandler();
                 },
               ),
-              const SizedBox(width: 8),
               _buildModeChip(
                 label: 'Key Combination',
                 selected: hs.mode == HotkeyMode.combination,
@@ -1126,7 +1138,20 @@ class _ShortcutPageState extends State<_ShortcutPage> {
           const SizedBox(height: 16),
 
           // ── Options for selected mode ──
-          if (hs.mode == HotkeyMode.singleKey) ...[
+          if (hs.mode == HotkeyMode.fnKey) ...[
+            Text(
+              'Hold the fn key to dictate. Release to stop.',
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Tip: If fn opens the emoji picker, change it in\n'
+              'System Settings → Keyboard → "Press 🌐 key to" → "Do Nothing".',
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.35), fontSize: 10),
+            ),
+          ] else if (hs.mode == HotkeyMode.singleKey) ...[
             Text(
               'Long-press a function key to dictate.',
               style: TextStyle(

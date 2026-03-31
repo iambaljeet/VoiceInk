@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/whisper_model.dart';
 import '../models/sherpa_model.dart';
@@ -875,14 +876,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ── Mode toggle ──
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
+                // fn key mode is macOS-only
+                if (Platform.isMacOS)
+                  _buildModeChip(
+                    label: 'Fn Key',
+                    selected: hs.mode == HotkeyMode.fnKey,
+                    onTap: () => hs.setMode(HotkeyMode.fnKey),
+                  ),
                 _buildModeChip(
-                  label: 'Single Key',
+                  label: 'Function Key',
                   selected: hs.mode == HotkeyMode.singleKey,
                   onTap: () => hs.setMode(HotkeyMode.singleKey),
                 ),
-                const SizedBox(width: 8),
                 _buildModeChip(
                   label: 'Key Combination',
                   selected: hs.mode == HotkeyMode.combination,
@@ -893,7 +902,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 12),
 
             // ── Options for selected mode ──
-            if (hs.mode == HotkeyMode.singleKey) ...[
+            if (hs.mode == HotkeyMode.fnKey) ...[
+              Text(
+                'Hold the fn key to dictate. Release to stop and transcribe.',
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Tip: If fn opens the emoji picker, go to System Settings → '
+                'Keyboard → "Press 🌐 key to" and set it to "Do Nothing".',
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.35), fontSize: 10),
+              ),
+            ] else if (hs.mode == HotkeyMode.singleKey) ...[
               Text(
                 'Long-press a function key to dictate.',
                 style: TextStyle(

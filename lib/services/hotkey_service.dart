@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// How the push-to-talk hotkey is triggered.
 enum HotkeyMode {
+  fnKey,       // Hold the fn key (default, easiest)
   singleKey,   // Long-press a single function key (F5, F6, …)
   combination, // Press a modifier+key combo (⌥Space, ⌃Space, …)
 }
@@ -112,8 +113,9 @@ typedef VoidAsyncCallback = Future<void> Function();
 
 /// Manages the push-to-talk shortcut key.
 ///
-/// Supports two modes:
-///  - **singleKey**: long-press a function key (default: F5)
+/// Supports three modes:
+///  - **fnKey**: hold the fn key (default, simplest)
+///  - **singleKey**: long-press a function key (F5, etc.)
 ///  - **combination**: hold a modifier+key combo (⌥Space, etc.)
 ///
 /// Persists mode, function key, and combo preset to SharedPreferences.
@@ -122,7 +124,10 @@ class HotkeyService extends ChangeNotifier {
   static const _prefFnKey = 'hotkey_fn_key';
   static const _prefCombo = 'shortcut_preset';
 
-  HotkeyMode _mode = HotkeyMode.singleKey;
+  static const _fnKeyChannel = MethodChannel('com.voiceink/fnkey');
+
+  // fn key mode is macOS-only (Windows fn key is firmware-level, not OS-visible)
+  HotkeyMode _mode = Platform.isMacOS ? HotkeyMode.fnKey : HotkeyMode.singleKey;
   FunctionKeyPreset _fnKey = FunctionKeyPreset.f5;
   ShortcutPreset _combo = ShortcutPreset.optionSpace;
 
@@ -142,8 +147,16 @@ class HotkeyService extends ChangeNotifier {
   ShortcutPreset get preset => _combo;
 
   /// Human-readable label for the currently active hotkey.
-  String get activeLabel =>
-      _mode == HotkeyMode.singleKey ? _fnKey.label : _combo.label;
+  String get activeLabel {
+    switch (_mode) {
+      case HotkeyMode.fnKey:
+        return 'fn';
+      case HotkeyMode.singleKey:
+        return _fnKey.label;
+      case HotkeyMode.combination:
+        return _combo.label;
+    }
+  }
 
   // ── Init ──
 
@@ -174,7 +187,7 @@ class HotkeyService extends ChangeNotifier {
 
   // ── Setters (persist + re-register) ──
 
-  /// Switch between single-key and combination mode.
+  /// Switch between fn-key, single-key, and combination mode.
   Future<void> setMode(HotkeyMode mode) async {
     if (_mode == mode) return;
     _mode = mode;
@@ -231,28 +244,52 @@ class HotkeyService extends ChangeNotifier {
 
     await _unregisterCurrent();
 
-    final hotKey = _mode == HotkeyMode.singleKey
-        ? _fnKey.toHotKey()
-        : _combo.toHotKey();
+    if (_mode == HotkeyMode.fnKey && Platform.isMacOS) {
+      // Use native fn-key monitoring via platform channel (macOS only)
+      _fnKeyChannel.setMethodCallHandler((call) async {
+        switch (call.method) {
+          case 'fnKeyDown':
+            _isPressed = true;
+            notifyListeners();
+            await onKeyDown();
+            break;
+          case 'fnKeyUp':
+            _isPressed = false;
+            notifyListeners();
+            await onKeyUp();
+            break;
+        }
+      });
+      try {
+        await _fnKeyChannel.invokeMethod('startMonitoring');
+        debugPrint('[HotkeyService] Registered fn key push-to-talk');
+      } catch (e) {
+        debugPrint('[HotkeyService] Failed to start fn key monitoring: $e');
+      }
+    } else {
+      final hotKey = _mode == HotkeyMode.singleKey
+          ? _fnKey.toHotKey()
+          : _combo.toHotKey();
 
-    _registeredHotKey = hotKey;
-    try {
-      await hotKeyManager.register(
-        _registeredHotKey!,
-        keyDownHandler: (_) async {
-          _isPressed = true;
-          notifyListeners();
-          await onKeyDown();
-        },
-        keyUpHandler: (_) async {
-          _isPressed = false;
-          notifyListeners();
-          await onKeyUp();
-        },
-      );
-      debugPrint('[HotkeyService] Registered $activeLabel push-to-talk (${_mode.name})');
-    } catch (e) {
-      debugPrint('[HotkeyService] Failed to register hotkey: $e');
+      _registeredHotKey = hotKey;
+      try {
+        await hotKeyManager.register(
+          _registeredHotKey!,
+          keyDownHandler: (_) async {
+            _isPressed = true;
+            notifyListeners();
+            await onKeyDown();
+          },
+          keyUpHandler: (_) async {
+            _isPressed = false;
+            notifyListeners();
+            await onKeyUp();
+          },
+        );
+        debugPrint('[HotkeyService] Registered $activeLabel push-to-talk (${_mode.name})');
+      } catch (e) {
+        debugPrint('[HotkeyService] Failed to register hotkey: $e');
+      }
     }
   }
 
@@ -264,10 +301,17 @@ class HotkeyService extends ChangeNotifier {
   }
 
   Future<void> _unregisterCurrent() async {
+    // Stop hotkey_manager registration
     if (_registeredHotKey != null) {
       try { await hotKeyManager.unregister(_registeredHotKey!); }
       catch (_) {}
       _registeredHotKey = null;
+    }
+    // Stop native fn-key monitoring (macOS only)
+    if (Platform.isMacOS) {
+      try { await _fnKeyChannel.invokeMethod('stopMonitoring'); }
+      catch (_) {}
+      _fnKeyChannel.setMethodCallHandler(null);
     }
   }
 

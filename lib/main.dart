@@ -86,6 +86,7 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
   bool _capsuleHovered = false;
   bool _capsuleBorderVisible = true;
   static const _hoverChannel = MethodChannel('com.voiceink/hover');
+  static const _windowChannel = MethodChannel('com.voiceink/window');
   final _indicatorKey = GlobalKey();
 
   @override
@@ -112,7 +113,13 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
         _hitTestCapsule(Offset(x, y));
         break;
       case 'mouseExit':
-        if (_capsuleHovered) setState(() => _capsuleHovered = false);
+        if (_capsuleHovered) {
+          setState(() => _capsuleHovered = false);
+          // Re-enable click-through when mouse leaves the pill (macOS)
+          if (Platform.isMacOS) {
+            _windowChannel.invokeMethod('setClickThrough', true);
+          }
+        }
         break;
     }
   }
@@ -137,6 +144,11 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
     final inside = rect.contains(windowPoint);
     if (inside != _capsuleHovered) {
       setState(() => _capsuleHovered = inside);
+      // Toggle click-through: disable when hovering the pill so it receives
+      // clicks/drags, re-enable when mouse leaves so clicks pass through.
+      if (Platform.isMacOS) {
+        _windowChannel.invokeMethod('setClickThrough', !inside);
+      }
     }
   }
 
@@ -231,6 +243,11 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
     await windowManager.setBackgroundColor(Colors.transparent);
     await windowManager.setHasShadow(false);
     await windowManager.setPosition(const Offset(600, 40));
+
+    // Enable capsule mode (click-through on macOS)
+    if (Platform.isMacOS) {
+      _windowChannel.invokeMethod('setCapsuleMode', true);
+    }
 
     await windowManager.show();
     await windowManager.focus();
@@ -461,6 +478,11 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
       _mode = AppMode.settings;
       if (mounted) setState(() {});
 
+      // Disable capsule mode so settings window is fully interactive
+      if (Platform.isMacOS) {
+        _windowChannel.invokeMethod('setCapsuleMode', false);
+      }
+
       await windowManager.setMaximumSize(const Size(800, 900));
       await windowManager.setMinimumSize(const Size(420, 500));
       await windowManager.setSize(const Size(480, 680));
@@ -573,12 +595,15 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
     return ListenableBuilder(
       listenable: Listenable.merge([_dictation, _whisperStreaming, _engineManager]),
       builder: (context, _) {
-        return GestureDetector(
-          onPanStart: (_) => windowManager.startDragging(),
-          onDoubleTap: _openSettings,
-          child: Container(
-            color: Colors.transparent,
-            child: Center(
+        // Only the pill area is interactive (drag + double-tap).
+        // The transparent background passes clicks through to apps behind.
+        return Center(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onPanStart: (_) => windowManager.startDragging(),
+            onDoubleTap: _openSettings,
+            child: Padding(
+              padding: const EdgeInsets.all(10),
               child: FloatingIndicator(
                 key: _indicatorKey,
                 state: _capsuleState,

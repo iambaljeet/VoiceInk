@@ -173,15 +173,15 @@
             <span class="material-icons-round">keyboard</span>
           </div>
           <h3>Push-to-Talk</h3>
-          <p>Hold your shortcut key to speak, release to type. Your words appear instantly in any text field or app.</p>
+          <p>Hold the fn key (or your chosen shortcut) to speak, release to type. Your words appear instantly in any text field or app. Three activation modes: Fn Key, Function Key, or Key Combination.</p>
         </div>
 
         <div class="feature-card">
           <div class="feature-icon-wrap">
             <span class="material-icons-round">psychology</span>
           </div>
-          <h3>AI-Powered Accuracy</h3>
-          <p>Powered by OpenAI's Whisper — choose from 9 models for the perfect balance of speed and accuracy.</p>
+          <h3>Dual STT Engines</h3>
+          <p>Choose between Whisper.cpp (CLI) and Sherpa-ONNX (native FFI) speech-to-text engines. Pick from 9+ Whisper models or high-performance ONNX models for the perfect balance of speed and accuracy.</p>
         </div>
 
         <div class="feature-card">
@@ -221,7 +221,7 @@
             <span class="material-icons-round">tune</span>
           </div>
           <h3>Customizable Shortcuts</h3>
-          <p>Pick from preset hotkeys (⌥Space, ⌃Space, ⌥⇧Space) or configure your own to fit your workflow perfectly.</p>
+          <p>Three activation modes: hold the fn key (default), a single function key (F5–F12), or key combinations (⌥Space, ⌃Space, ⌥⇧Space). Pick what fits your workflow.</p>
         </div>
       </div>
     </div>
@@ -244,7 +244,7 @@
               <span class="material-icons-round">shield</span>
               <div>
                 <strong>100% Offline Processing</strong>
-                <p>All speech recognition runs on your CPU using Whisper AI. Your audio never touches the internet.</p>
+                <p>All speech recognition runs on your CPU using Whisper.cpp or Sherpa-ONNX — two local STT engines. Your audio never touches the internet.</p>
               </div>
             </div>
             <div class="privacy-point">
@@ -337,7 +337,7 @@
             <span class="material-icons-round">record_voice_over</span>
           </div>
           <h3>Hold &amp; Speak</h3>
-          <p>Hold your shortcut key, speak naturally, and release. Your words appear instantly wherever you're typing.</p>
+          <p>Hold the fn key (default) or your chosen shortcut, speak naturally, and release. Your words appear instantly wherever you're typing.</p>
         </div>
       </div>
     </div>
@@ -347,9 +347,9 @@
   <section class="models" id="models">
     <div class="container">
       <div class="section-header">
-        <span class="section-label">Whisper Models</span>
-        <h2 class="section-title">Choose your engine.</h2>
-        <p class="section-subtitle">From lightning-fast to studio-accurate. All models run 100% locally on your machine.</p>
+        <span class="section-label">STT Engines &amp; Models</span>
+        <h2 class="section-title">Two engines. Your choice.</h2>
+        <p class="section-subtitle">VoiceInk supports both <strong>Whisper.cpp</strong> and <strong>Sherpa-ONNX</strong> speech-to-text engines. Switch between them in Settings. All models run 100% locally on your machine.</p>
       </div>
 
       <div class="models-table-wrap">
@@ -357,6 +357,7 @@
           <thead>
             <tr>
               <th>Model</th>
+              <th>Engine</th>
               <th>Languages</th>
               <th>Size</th>
               <th>Speed</th>
@@ -366,6 +367,7 @@
           <tbody>
             <tr>
               <td><strong>Tiny</strong></td>
+              <td>Whisper.cpp</td>
               <td>English / 52+</td>
               <td>75 MB</td>
               <td><span class="badge badge-green">Fastest</span></td>
@@ -373,6 +375,7 @@
             </tr>
             <tr>
               <td><strong>Base</strong></td>
+              <td>Whisper.cpp</td>
               <td>English / 52+</td>
               <td>148 MB</td>
               <td><span class="badge badge-green">Fast</span></td>
@@ -380,6 +383,7 @@
             </tr>
             <tr>
               <td><strong>Small</strong></td>
+              <td>Whisper.cpp</td>
               <td>English / 52+</td>
               <td>487 MB</td>
               <td><span class="badge badge-yellow">Medium</span></td>
@@ -387,6 +391,7 @@
             </tr>
             <tr>
               <td><strong>Medium</strong></td>
+              <td>Whisper.cpp</td>
               <td>English / 52+</td>
               <td>1.5 GB</td>
               <td><span class="badge badge-yellow">Medium</span></td>
@@ -394,10 +399,19 @@
             </tr>
             <tr class="recommended-row">
               <td><strong>Large V3 Turbo</strong> <span class="badge badge-purple">Recommended</span></td>
+              <td>Whisper.cpp</td>
               <td>52+</td>
               <td>1.6 GB</td>
               <td><span class="badge badge-green">Fast</span></td>
               <td><span class="meter"><span style="width:97%"></span></span></td>
+            </tr>
+            <tr>
+              <td><strong>Sherpa ONNX Models</strong></td>
+              <td>Sherpa-ONNX</td>
+              <td>Varies</td>
+              <td>Varies</td>
+              <td><span class="badge badge-green">Fast</span></td>
+              <td><span class="meter"><span style="width:80%"></span></span></td>
             </tr>
           </tbody>
         </table>
