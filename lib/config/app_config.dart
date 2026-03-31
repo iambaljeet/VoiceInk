@@ -5,8 +5,8 @@ class AppConfig {
   // ─── App Identity ─────────────────────────────────
   static const String appName = 'VoiceInk';
   static const String appTagline = 'Local Voice Dictation';
-  static const String appVersion = '1.0.1';
-  static const String appBuildNumber = '2';
+  static const String appVersion = '1.0.2';
+  static const String appBuildNumber = '3';
   static const String bundleIdentifier = 'com.voiceink.voiceInk';
   static const String copyright =
       'Copyright © 2026 VoiceInk. All rights reserved.';
