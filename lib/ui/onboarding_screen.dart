@@ -1053,19 +1053,7 @@ class _ShortcutPageState extends State<_ShortcutPage> {
   void initState() {
     super.initState();
     widget.hotkeyService.addListener(_update);
-    // Register a test handler
-    widget.hotkeyService.registerPushToTalk(
-      () async {
-        // keyDown — just mark as tested
-        if (!_tested) {
-          _tested = true;
-          if (mounted) setState(() {});
-        }
-      },
-      () async {
-        // keyUp — nothing to do in test mode
-      },
-    );
+    _registerTestHandler();
   }
 
   @override
@@ -1077,6 +1065,18 @@ class _ShortcutPageState extends State<_ShortcutPage> {
 
   void _update() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _registerTestHandler() async {
+    await widget.hotkeyService.registerPushToTalk(
+      () async {
+        if (!_tested) {
+          _tested = true;
+          if (mounted) setState(() {});
+        }
+      },
+      () async {},
+    );
   }
 
   @override
@@ -1097,68 +1097,134 @@ class _ShortcutPageState extends State<_ShortcutPage> {
           Text('Hold the shortcut to speak, release to type.',
               style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.5), fontSize: 13)),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
-          // Preset picker
-          ...ShortcutPreset.values.map((preset) {
-            final selected = hs.preset == preset;
-            return GestureDetector(
-              onTap: () async {
-                _tested = false;
-                await hs.setPreset(preset);
-                // Re-register test handler
-                await hs.registerPushToTalk(
-                  () async {
-                    _tested = true;
-                    if (mounted) setState(() {});
+          // ── Mode toggle ──
+          Row(
+            children: [
+              _buildModeChip(
+                label: 'Single Key',
+                selected: hs.mode == HotkeyMode.singleKey,
+                onTap: () async {
+                  _tested = false;
+                  await hs.setMode(HotkeyMode.singleKey);
+                  await _registerTestHandler();
+                },
+              ),
+              const SizedBox(width: 8),
+              _buildModeChip(
+                label: 'Key Combination',
+                selected: hs.mode == HotkeyMode.combination,
+                onTap: () async {
+                  _tested = false;
+                  await hs.setMode(HotkeyMode.combination);
+                  await _registerTestHandler();
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // ── Options for selected mode ──
+          if (hs.mode == HotkeyMode.singleKey) ...[
+            Text(
+              'Long-press a function key to dictate.',
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: FunctionKeyPreset.values.map((fk) {
+                final selected = hs.fnKey == fk;
+                return GestureDetector(
+                  onTap: () async {
+                    _tested = false;
+                    await hs.setFunctionKey(fk);
+                    await _registerTestHandler();
                   },
-                  () async {},
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? _accentColor.withValues(alpha: 0.15)
+                          : Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: selected
+                            ? _accentColor.withValues(alpha: 0.5)
+                            : Colors.white.withValues(alpha: 0.1),
+                      ),
+                    ),
+                    child: Text(
+                      fk.label,
+                      style: TextStyle(
+                        color: selected ? _accentColor : Colors.white70,
+                        fontWeight:
+                            selected ? FontWeight.w600 : FontWeight.w400,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
                 );
-              },
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: selected
-                      ? _accentColor.withValues(alpha: 0.15)
-                      : Colors.white.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
+              }).toList(),
+            ),
+          ] else ...[
+            ...ShortcutPreset.values.map((preset) {
+              final selected = hs.combo == preset;
+              return GestureDetector(
+                onTap: () async {
+                  _tested = false;
+                  await hs.setCombo(preset);
+                  await _registerTestHandler();
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
                     color: selected
-                        ? _accentColor.withValues(alpha: 0.5)
-                        : Colors.white.withValues(alpha: 0.1),
+                        ? _accentColor.withValues(alpha: 0.15)
+                        : Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: selected
+                          ? _accentColor.withValues(alpha: 0.5)
+                          : Colors.white.withValues(alpha: 0.1),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        selected
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_off,
+                        color: selected ? _accentColor : Colors.white38,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(preset.label,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 15)),
+                          Text(preset.description,
+                              style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.5),
+                                  fontSize: 11)),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-                child: Row(
-                  children: [
-                    Icon(
-                      selected
-                          ? Icons.radio_button_checked
-                          : Icons.radio_button_off,
-                      color: selected ? _accentColor : Colors.white38,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(preset.label,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w500,
-                                fontSize: 15)),
-                        Text(preset.description,
-                            style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.5),
-                                fontSize: 11)),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }),
+              );
+            }),
+          ],
 
           const SizedBox(height: 20),
 
@@ -1188,7 +1254,7 @@ class _ShortcutPageState extends State<_ShortcutPage> {
                       ? '🎙️ Listening...'
                       : _tested
                           ? '✓ Shortcut works!'
-                          : 'Press ${hs.preset.label} to test',
+                          : 'Press ${hs.activeLabel} to test',
                   style: TextStyle(
                     color: hs.isPressed
                         ? Colors.green
@@ -1225,6 +1291,38 @@ class _ShortcutPageState extends State<_ShortcutPage> {
           ),
           const SizedBox(height: 20),
         ],
+      ),
+    );
+  }
+
+  Widget _buildModeChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? _accentColor.withValues(alpha: 0.15)
+              : Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected
+                ? _accentColor.withValues(alpha: 0.5)
+                : Colors.white.withValues(alpha: 0.1),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? _accentColor : Colors.white60,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            fontSize: 13,
+          ),
+        ),
       ),
     );
   }

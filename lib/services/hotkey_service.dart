@@ -4,7 +4,57 @@ import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Available push-to-talk shortcut presets.
+// ─── Hotkey activation mode ─────────────────────────────
+
+/// How the push-to-talk hotkey is triggered.
+enum HotkeyMode {
+  singleKey,   // Long-press a single function key (F5, F6, …)
+  combination, // Press a modifier+key combo (⌥Space, ⌃Space, …)
+}
+
+// ─── Single function-key presets ────────────────────────
+
+/// Available single function keys for push-to-talk.
+enum FunctionKeyPreset { f5, f6, f7, f8, f9, f10, f11, f12 }
+
+extension FunctionKeyPresetX on FunctionKeyPreset {
+  String get label {
+    switch (this) {
+      case FunctionKeyPreset.f5:  return 'F5';
+      case FunctionKeyPreset.f6:  return 'F6';
+      case FunctionKeyPreset.f7:  return 'F7';
+      case FunctionKeyPreset.f8:  return 'F8';
+      case FunctionKeyPreset.f9:  return 'F9';
+      case FunctionKeyPreset.f10: return 'F10';
+      case FunctionKeyPreset.f11: return 'F11';
+      case FunctionKeyPreset.f12: return 'F12';
+    }
+  }
+
+  String get description => 'Hold $label to dictate';
+
+  PhysicalKeyboardKey get physicalKey {
+    switch (this) {
+      case FunctionKeyPreset.f5:  return PhysicalKeyboardKey.f5;
+      case FunctionKeyPreset.f6:  return PhysicalKeyboardKey.f6;
+      case FunctionKeyPreset.f7:  return PhysicalKeyboardKey.f7;
+      case FunctionKeyPreset.f8:  return PhysicalKeyboardKey.f8;
+      case FunctionKeyPreset.f9:  return PhysicalKeyboardKey.f9;
+      case FunctionKeyPreset.f10: return PhysicalKeyboardKey.f10;
+      case FunctionKeyPreset.f11: return PhysicalKeyboardKey.f11;
+      case FunctionKeyPreset.f12: return PhysicalKeyboardKey.f12;
+    }
+  }
+
+  HotKey toHotKey() => HotKey(
+        key: physicalKey,
+        scope: HotKeyScope.system,
+      );
+}
+
+// ─── Modifier+key combination presets ───────────────────
+
+/// Available push-to-talk key combination presets.
 enum ShortcutPreset {
   optionSpace,
   controlSpace,
@@ -56,52 +106,120 @@ extension ShortcutPresetX on ShortcutPreset {
       );
 }
 
+// ─── Service ────────────────────────────────────────────
+
 typedef VoidAsyncCallback = Future<void> Function();
 
 /// Manages the push-to-talk shortcut key.
-/// - Persists the chosen preset to SharedPreferences.
-/// - Registers global hotkey with keyDown (start) and keyUp (stop) handlers.
+///
+/// Supports two modes:
+///  - **singleKey**: long-press a function key (default: F5)
+///  - **combination**: hold a modifier+key combo (⌥Space, etc.)
+///
+/// Persists mode, function key, and combo preset to SharedPreferences.
 class HotkeyService extends ChangeNotifier {
-  static const _prefKey = 'shortcut_preset';
+  static const _prefMode  = 'hotkey_mode';
+  static const _prefFnKey = 'hotkey_fn_key';
+  static const _prefCombo = 'shortcut_preset';
 
-  ShortcutPreset _preset = ShortcutPreset.optionSpace;
+  HotkeyMode _mode = HotkeyMode.singleKey;
+  FunctionKeyPreset _fnKey = FunctionKeyPreset.f5;
+  ShortcutPreset _combo = ShortcutPreset.optionSpace;
+
   HotKey? _registeredHotKey;
-
   VoidAsyncCallback? _onKeyDown;
   VoidAsyncCallback? _onKeyUp;
-
-  // For the shortcut test UI
   bool _isPressed = false;
 
-  ShortcutPreset get preset => _preset;
+  // ── Getters ──
+
+  HotkeyMode get mode => _mode;
+  FunctionKeyPreset get fnKey => _fnKey;
+  ShortcutPreset get combo => _combo;
   bool get isPressed => _isPressed;
 
-  /// Load saved preset from prefs.
+  /// Backward-compat alias for [combo].
+  ShortcutPreset get preset => _combo;
+
+  /// Human-readable label for the currently active hotkey.
+  String get activeLabel =>
+      _mode == HotkeyMode.singleKey ? _fnKey.label : _combo.label;
+
+  // ── Init ──
+
+  /// Load saved preferences.
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString(_prefKey);
-    if (saved != null) {
-      try {
-        _preset = ShortcutPreset.values.firstWhere((e) => e.name == saved);
-      } catch (_) {}
+
+    final savedMode = prefs.getString(_prefMode);
+    if (savedMode != null) {
+      try { _mode = HotkeyMode.values.firstWhere((e) => e.name == savedMode); }
+      catch (_) {}
     }
+
+    final savedFn = prefs.getString(_prefFnKey);
+    if (savedFn != null) {
+      try { _fnKey = FunctionKeyPreset.values.firstWhere((e) => e.name == savedFn); }
+      catch (_) {}
+    }
+
+    final savedCombo = prefs.getString(_prefCombo);
+    if (savedCombo != null) {
+      try { _combo = ShortcutPreset.values.firstWhere((e) => e.name == savedCombo); }
+      catch (_) {}
+    }
+
     notifyListeners();
   }
 
-  /// Change the active shortcut preset. Re-registers the hotkey if active.
-  Future<void> setPreset(ShortcutPreset preset) async {
-    if (_preset == preset) return;
-    _preset = preset;
+  // ── Setters (persist + re-register) ──
+
+  /// Switch between single-key and combination mode.
+  Future<void> setMode(HotkeyMode mode) async {
+    if (_mode == mode) return;
+    _mode = mode;
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefKey, preset.name);
+    await prefs.setString(_prefMode, mode.name);
 
-    // Re-register if we have active handlers
-    if (_onKeyDown != null || _onKeyUp != null) {
+    if (_onKeyDown != null && _onKeyUp != null) {
       await registerPushToTalk(_onKeyDown!, _onKeyUp!);
     }
     notifyListeners();
   }
+
+  /// Change the function key for single-key mode.
+  Future<void> setFunctionKey(FunctionKeyPreset key) async {
+    if (_fnKey == key) return;
+    _fnKey = key;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefFnKey, key.name);
+
+    if (_mode == HotkeyMode.singleKey && _onKeyDown != null && _onKeyUp != null) {
+      await registerPushToTalk(_onKeyDown!, _onKeyUp!);
+    }
+    notifyListeners();
+  }
+
+  /// Change the combination preset.
+  Future<void> setCombo(ShortcutPreset preset) async {
+    if (_combo == preset) return;
+    _combo = preset;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefCombo, preset.name);
+
+    if (_mode == HotkeyMode.combination && _onKeyDown != null && _onKeyUp != null) {
+      await registerPushToTalk(_onKeyDown!, _onKeyUp!);
+    }
+    notifyListeners();
+  }
+
+  /// Backward-compat alias for [setCombo].
+  Future<void> setPreset(ShortcutPreset preset) => setCombo(preset);
+
+  // ── Registration ──
 
   /// Register the push-to-talk hotkey with keyDown/keyUp handlers.
   Future<void> registerPushToTalk(
@@ -111,10 +229,13 @@ class HotkeyService extends ChangeNotifier {
     _onKeyDown = onKeyDown;
     _onKeyUp = onKeyUp;
 
-    // Unregister previous if any
     await _unregisterCurrent();
 
-    _registeredHotKey = _preset.toHotKey();
+    final hotKey = _mode == HotkeyMode.singleKey
+        ? _fnKey.toHotKey()
+        : _combo.toHotKey();
+
+    _registeredHotKey = hotKey;
     try {
       await hotKeyManager.register(
         _registeredHotKey!,
@@ -129,7 +250,7 @@ class HotkeyService extends ChangeNotifier {
           await onKeyUp();
         },
       );
-      debugPrint('[HotkeyService] Registered ${_preset.label} push-to-talk');
+      debugPrint('[HotkeyService] Registered $activeLabel push-to-talk (${_mode.name})');
     } catch (e) {
       debugPrint('[HotkeyService] Failed to register hotkey: $e');
     }
@@ -144,9 +265,8 @@ class HotkeyService extends ChangeNotifier {
 
   Future<void> _unregisterCurrent() async {
     if (_registeredHotKey != null) {
-      try {
-        await hotKeyManager.unregister(_registeredHotKey!);
-      } catch (_) {}
+      try { await hotKeyManager.unregister(_registeredHotKey!); }
+      catch (_) {}
       _registeredHotKey = null;
     }
   }

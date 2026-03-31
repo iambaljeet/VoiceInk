@@ -267,7 +267,7 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
     final menu = Menu();
     await menu.buildFrom([
       MenuItemLabel(
-        label: 'Hold ${_hotkeyService.preset.label} to Dictate',
+        label: 'Hold ${_hotkeyService.activeLabel} to Dictate',
         onClicked: (_) {},
       ),
       MenuSeparator(),
@@ -582,7 +582,7 @@ class _VoiceInkHomeState extends State<VoiceInkHome> with WindowListener {
               child: FloatingIndicator(
                 key: _indicatorKey,
                 state: _capsuleState,
-                shortcutLabel: _hotkeyService.preset.label,
+                shortcutLabel: _hotkeyService.activeLabel,
                 isHovered: _capsuleHovered,
                 showBorder: _capsuleBorderVisible,
               ),

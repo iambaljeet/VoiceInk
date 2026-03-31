@@ -874,68 +874,164 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ...ShortcutPreset.values.map((preset) {
-              final selected = hs.preset == preset;
-              return GestureDetector(
-                onTap: () => hs.setPreset(preset),
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? const Color(0xFF3B82F6).withValues(alpha: 0.15)
-                        : Colors.white.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: selected
-                          ? const Color(0xFF3B82F6).withValues(alpha: 0.5)
-                          : Colors.white.withValues(alpha: 0.1),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        selected
-                            ? Icons.radio_button_checked
-                            : Icons.radio_button_off,
+            // ── Mode toggle ──
+            Row(
+              children: [
+                _buildModeChip(
+                  label: 'Single Key',
+                  selected: hs.mode == HotkeyMode.singleKey,
+                  onTap: () => hs.setMode(HotkeyMode.singleKey),
+                ),
+                const SizedBox(width: 8),
+                _buildModeChip(
+                  label: 'Key Combination',
+                  selected: hs.mode == HotkeyMode.combination,
+                  onTap: () => hs.setMode(HotkeyMode.combination),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // ── Options for selected mode ──
+            if (hs.mode == HotkeyMode.singleKey) ...[
+              Text(
+                'Long-press a function key to dictate.',
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: FunctionKeyPreset.values.map((fk) {
+                  final selected = hs.fnKey == fk;
+                  return GestureDetector(
+                    onTap: () => hs.setFunctionKey(fk),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
                         color: selected
-                            ? const Color(0xFF3B82F6)
-                            : Colors.white38,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(preset.label,
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 15)),
-                            Text(preset.description,
-                                style: TextStyle(
-                                    color:
-                                        Colors.white.withValues(alpha: 0.5),
-                                    fontSize: 11)),
-                          ],
+                            ? const Color(0xFF3B82F6).withValues(alpha: 0.15)
+                            : Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: selected
+                              ? const Color(0xFF3B82F6).withValues(alpha: 0.5)
+                              : Colors.white.withValues(alpha: 0.1),
                         ),
                       ),
-                      if (selected)
-                        const Text('Active',
-                            style: TextStyle(
-                                color: Color(0xFF3B82F6),
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12)),
-                    ],
+                      child: Text(
+                        fk.label,
+                        style: TextStyle(
+                          color: selected
+                              ? const Color(0xFF3B82F6)
+                              : Colors.white70,
+                          fontWeight:
+                              selected ? FontWeight.w600 : FontWeight.w400,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ] else ...[
+              ...ShortcutPreset.values.map((preset) {
+                final selected = hs.combo == preset;
+                return GestureDetector(
+                  onTap: () => hs.setCombo(preset),
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? const Color(0xFF3B82F6).withValues(alpha: 0.15)
+                          : Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: selected
+                            ? const Color(0xFF3B82F6).withValues(alpha: 0.5)
+                            : Colors.white.withValues(alpha: 0.1),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          selected
+                              ? Icons.radio_button_checked
+                              : Icons.radio_button_off,
+                          color: selected
+                              ? const Color(0xFF3B82F6)
+                              : Colors.white38,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(preset.label,
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 15)),
+                              Text(preset.description,
+                                  style: TextStyle(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.5),
+                                      fontSize: 11)),
+                            ],
+                          ),
+                        ),
+                        if (selected)
+                          const Text('Active',
+                              style: TextStyle(
+                                  color: Color(0xFF3B82F6),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12)),
+                      ],
+                    ),
                   ),
-                ),
-              );
-            }),
+                );
+              }),
+            ],
           ],
         );
       },
+    );
+  }
+
+  Widget _buildModeChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? const Color(0xFF3B82F6).withValues(alpha: 0.15)
+              : Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected
+                ? const Color(0xFF3B82F6).withValues(alpha: 0.5)
+                : Colors.white.withValues(alpha: 0.1),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? const Color(0xFF3B82F6) : Colors.white60,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            fontSize: 13,
+          ),
+        ),
+      ),
     );
   }
 }
