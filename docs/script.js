@@ -53,8 +53,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---------- Scroll-based fade-in animation ----------
   const observerOptions = {
-    threshold: 0.1,
-    rootMargin: '0px 0px -40px 0px'
+    threshold: 0.01,
+    rootMargin: '0px 0px 60px 0px' // trigger 60px before element enters viewport
   };
 
   const observer = new IntersectionObserver((entries) => {
@@ -66,12 +66,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }, observerOptions);
 
-  // Observe feature cards, step cards, privacy points
-  document.querySelectorAll(
-    '.feature-card, .step-card, .privacy-point, .p-card, .stat-card'
-  ).forEach((el, i) => {
-    el.style.animationDelay = `${i * 0.08}s`;
-    observer.observe(el);
+  // Observe cards — stagger delay is per-section, not global
+  const sectionSelectors = [
+    '.feature-card',
+    '.step-card',
+    '.privacy-point',
+    '.p-card',
+    '.stat-card',
+  ];
+
+  sectionSelectors.forEach(selector => {
+    document.querySelectorAll(selector).forEach((el, i) => {
+      el.style.animationDelay = `${i * 0.08}s`;
+      observer.observe(el);
+    });
   });
 
   // ---------- Smooth scroll for anchor links ----------
