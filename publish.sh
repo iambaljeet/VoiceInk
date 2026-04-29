@@ -425,11 +425,12 @@ build_macos() {
             MACOS_ARTIFACT="${PROJECT_DIR}/${artifact_name}.dmg"
             log "DMG created: ${artifact_name}.dmg ($(du -h "$MACOS_ARTIFACT" | cut -f1))"
         else
-            warn "DMG creation failed — falling back to ZIP."
-            zip_macos "$app_path" "$artifact_name"
+            warn "DMG creation failed — falling back to hdiutil."
+            hdiutil_dmg "$app_path" "$artifact_name"
         fi
     else
-        zip_macos "$app_path" "$artifact_name"
+        warn "'create-dmg' not found — using hdiutil to create DMG."
+        hdiutil_dmg "$app_path" "$artifact_name"
     fi
 }
 
@@ -439,6 +440,31 @@ zip_macos() {
     (cd "$(dirname "$app_path")" && zip -r "${PROJECT_DIR}/${artifact_name}.zip" "$(basename "$app_path")" -x '*.DS_Store')
     MACOS_ARTIFACT="${PROJECT_DIR}/${artifact_name}.zip"
     log "ZIP created: ${artifact_name}.zip ($(du -h "$MACOS_ARTIFACT" | cut -f1))"
+}
+
+hdiutil_dmg() {
+    local app_path="$1" artifact_name="$2"
+    header "Creating DMG with hdiutil"
+    local staging_dir="${PROJECT_DIR}/.dmg_staging"
+    rm -rf "$staging_dir"
+    mkdir -p "$staging_dir"
+    cp -r "$app_path" "$staging_dir/"
+    # Add Applications symlink so users can drag-install
+    ln -sf /Applications "$staging_dir/Applications"
+    rm -f "${artifact_name}.dmg" 2>/dev/null || true
+    hdiutil create \
+        -volname "${CURRENT_APP_NAME:-VoiceInk}" \
+        -srcfolder "$staging_dir" \
+        -ov -format UDZO \
+        -o "${artifact_name}.dmg"
+    rm -rf "$staging_dir"
+    if [ -f "${artifact_name}.dmg" ]; then
+        MACOS_ARTIFACT="${PROJECT_DIR}/${artifact_name}.dmg"
+        log "DMG created: ${artifact_name}.dmg ($(du -h "$MACOS_ARTIFACT" | cut -f1))"
+    else
+        warn "hdiutil DMG creation failed — falling back to ZIP."
+        zip_macos "$app_path" "$artifact_name"
+    fi
 }
 
 # ─── Build Windows ────────────────────────────────────────────────────────────

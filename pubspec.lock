@@ -767,10 +767,9 @@ packages:
   window_manager:
     dependency: "direct main"
     description:
-      name: window_manager
-      sha256: "7eb6d6c4164ec08e1bf978d6e733f3cebe792e2a23fb07cbca25c2872bfdbdcd"
-      url: "https://pub.dev"
-    source: hosted
+      path: "packages/window_manager"
+      relative: true
+    source: path
     version: "0.5.1"
   xdg_directories:
     dependency: transitive

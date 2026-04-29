@@ -49,6 +49,7 @@ extension FunctionKeyPresetX on FunctionKeyPreset {
 
   HotKey toHotKey() => HotKey(
         key: physicalKey,
+        modifiers: [],
         scope: HotKeyScope.system,
       );
 }
