@@ -1,10 +1,12 @@
 import Cocoa
 import FlutterMacOS
+import ApplicationServices
 
 class MainFlutterWindow: NSWindow {
   private var hoverChannel: FlutterMethodChannel?
   private var fnKeyChannel: FlutterMethodChannel?
   private var windowChannel: FlutterMethodChannel?
+  private var permissionChannel: FlutterMethodChannel?
   private var isMouseInWindow = false
   private var globalMonitor: Any?
   private var localMonitor: Any?
@@ -82,6 +84,31 @@ class MainFlutterWindow: NSWindow {
         let capsule = call.arguments as? Bool ?? true
         DispatchQueue.main.async {
           self?.setCapsuleMode(capsule)
+        }
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
+    // Permission channel — native accessibility check + open settings
+    permissionChannel = FlutterMethodChannel(
+      name: "com.voiceink/permissions",
+      binaryMessenger: messenger
+    )
+    permissionChannel?.setMethodCallHandler { call, result in
+      switch call.method {
+      case "checkAccessibility":
+        result(AXIsProcessTrusted())
+      case "openAccessibilitySettings":
+        let urlString: String
+        if #available(macOS 13.0, *) {
+          urlString = "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility"
+        } else {
+          urlString = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+        }
+        if let url = URL(string: urlString) {
+          NSWorkspace.shared.open(url)
         }
         result(nil)
       default:

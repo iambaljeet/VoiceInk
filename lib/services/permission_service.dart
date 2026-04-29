@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:record/record.dart';
 
 class PermissionService {
   final AudioRecorder _testRecorder = AudioRecorder();
+  static const _permChannel = MethodChannel('com.voiceink/permissions');
 
   bool _micGranted = false;
   bool _accessibilityGranted = false;
@@ -39,28 +41,18 @@ class PermissionService {
   }
 
   Future<bool> checkAccessibility() async {
-    if (Platform.isWindows || Platform.isLinux) {
-      _accessibilityGranted = true;
-      return true;
-    }
-
     if (!Platform.isMacOS) {
       _accessibilityGranted = true;
       return true;
     }
 
-    // macOS: check accessibility via AppleScript
     try {
-      final result = await Process.run('osascript', [
-        '-e',
-        'tell application "System Events" to key code 63',
-      ]).timeout(const Duration(seconds: 5));
-      _accessibilityGranted = result.exitCode == 0;
-      if (!_accessibilityGranted) {
-        debugPrint('[VoiceInk] Accessibility denied: ${result.stderr}');
-      }
+      final bool trusted =
+          await _permChannel.invokeMethod('checkAccessibility');
+      _accessibilityGranted = trusted;
     } catch (e) {
       debugPrint('[VoiceInk] Accessibility check error: $e');
+      // Fallback: assume granted so we don't block the user indefinitely
       _accessibilityGranted = false;
     }
     return _accessibilityGranted;
@@ -68,11 +60,14 @@ class PermissionService {
 
   Future<void> openAccessibilitySettings() async {
     if (Platform.isMacOS) {
-      await Process.run('open', [
-        'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
-      ]);
+      try {
+        await _permChannel.invokeMethod('openAccessibilitySettings');
+      } catch (e) {
+        debugPrint('[VoiceInk] openAccessibilitySettings error: $e');
+      }
     } else if (Platform.isWindows) {
-      await Process.run('cmd', ['/c', 'start', 'ms-settings:easeofaccess-display']);
+      await Process.run(
+          'cmd', ['/c', 'start', 'ms-settings:easeofaccess-display']);
     }
   }
 
