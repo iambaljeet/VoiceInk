@@ -446,33 +446,67 @@ zip_macos() {
 build_windows() {
     header "Building Windows (Release)"
 
-    # Check if we're on macOS — can't cross-compile Windows
+    # ── On macOS: cross-compile whisper-cli.exe via Docker ─────────────────────
     if [ "$(uname)" = "Darwin" ]; then
-        warn "Cannot build Windows on macOS. Flutter doesn't support cross-compilation."
+        read_current_config
+        local whisper_artifact_name="${CURRENT_APP_NAME:-VoiceInk}-${CURRENT_SEMVER}-whisper-windows-x64"
+        local whisper_output_dir="${PROJECT_DIR}/build-windows-whisper"
+        local docker_script="${PROJECT_DIR}/scripts/build_windows_docker.sh"
+
         echo ""
-        echo "  To build the Windows package:"
-        echo "  1. Push your code to GitHub"
-        echo "  2. On a Windows machine, clone and run:"
-        echo "     flutter build windows --release"
-        echo "     Then ZIP the build/windows/x64/runner/Release/ folder"
+        echo -e "${BOLD}Windows build options on macOS:${NC}"
         echo ""
-        read -rp "$(echo -e "${CYAN}Path to pre-built Windows ZIP${NC} (Enter to skip): ")" WIN_ZIP_PATH
-        if [ -n "$WIN_ZIP_PATH" ] && [ -f "$WIN_ZIP_PATH" ]; then
-            read_current_config
-            local artifact_name="${CURRENT_APP_NAME:-VoiceInk}-${CURRENT_SEMVER}-Windows-x64-Setup.exe"
-            cp "$WIN_ZIP_PATH" "${PROJECT_DIR}/${artifact_name}"
-            WINDOWS_ARTIFACT="${PROJECT_DIR}/${artifact_name}"
-            log "Windows artifact: ${artifact_name}"
+        echo "  1) Docker cross-compile  — build whisper-cli.exe locally (Docker required)"
+        echo "     GitHub Actions will build the Flutter Windows app + bundle it"
+        echo ""
+        echo "  2) Skip (macOS-only release)"
+        echo "     GitHub Actions will build Windows completely from scratch"
+        echo ""
+        read -rp "$(echo -e "${CYAN}Choose [1/2]:${NC} ")" WIN_BUILD_CHOICE
+
+        WINDOWS_ARTIFACT=""
+
+        if [[ "$WIN_BUILD_CHOICE" == "1" ]]; then
+            if ! command -v docker &>/dev/null; then
+                warn "Docker not found. Install Docker Desktop: https://www.docker.com/products/docker-desktop/"
+                warn "Falling back to GitHub Actions for full Windows build."
+                return
+            fi
+            if ! docker info &>/dev/null 2>&1; then
+                warn "Docker daemon is not running. Start Docker Desktop and try again."
+                warn "Falling back to GitHub Actions for full Windows build."
+                return
+            fi
+
+            info "Launching Docker cross-compilation for whisper-cli.exe…"
+            if bash "$docker_script"; then
+                if [ -f "${whisper_output_dir}/bin/whisper-cli.exe" ]; then
+                    # Package whisper-cli.exe (+ any DLLs) into a ZIP for CI consumption
+                    info "Packaging whisper-cli.exe…"
+                    rm -f "${PROJECT_DIR}/${whisper_artifact_name}.zip" 2>/dev/null || true
+                    (cd "${whisper_output_dir}/bin" && \
+                        zip -r "${PROJECT_DIR}/${whisper_artifact_name}.zip" .)
+                    WINDOWS_ARTIFACT="${PROJECT_DIR}/${whisper_artifact_name}.zip"
+                    log "whisper-cli.exe packaged: ${whisper_artifact_name}.zip ($(du -h "$WINDOWS_ARTIFACT" | cut -f1))"
+                    echo ""
+                    info "This ZIP will be uploaded to local-builds."
+                    info "GitHub Actions will build the Flutter Windows app, download this"
+                    info "whisper-cli.exe, bundle it, package with Inno Setup, and publish."
+                else
+                    warn "Docker ran but whisper-cli.exe not found in output. Skipping."
+                fi
+            else
+                warn "Docker build failed. GitHub Actions will compile whisper.cpp on Windows."
+            fi
         else
-            WINDOWS_ARTIFACT=""
-            warn "No Windows artifact provided — macOS-only release."
+            warn "Skipping local Windows build — GitHub Actions will build Windows fully."
         fi
         return
     fi
 
-    # On Windows (or WSL with Windows Flutter)
+    # ── On Windows (or WSL): native build ──────────────────────────────────────
     flutter build windows --release
-    log "Windows build complete."
+    log "Windows Flutter build complete."
 
     read_current_config
     local artifact_name="${CURRENT_APP_NAME:-VoiceInk}-${CURRENT_SEMVER}-Windows-x64"
@@ -590,8 +624,31 @@ publish_github() {
             trigger_release_workflow "$tag" "$repo_slug" "true" "true" "false" "false"
             ;;
         3)
+            # Upload local artifacts to staging, then the tag-push triggers CI.
+            # • macOS DMG    → always uploaded (built locally)
+            # • whisper ZIP  → uploaded if Docker cross-compile succeeded
+            # GitHub Actions then:
+            #   - Builds the Flutter Windows app on a Windows runner
+            #   - Downloads whisper-cli.exe from local-builds (our Docker artifact)
+            #     OR compiles whisper.cpp on Windows if we skipped Docker
+            #   - Bundles whisper-cli.exe into the Windows installer
+            #   - Creates the public GitHub Release with both artifacts
+            #   - Updates the website download links
             upload_local_builds "$repo_slug" "${assets[@]}"
-            trigger_release_workflow "$tag" "$repo_slug" "false" "true" "true" "false"
+            echo ""
+            if [ -n "${WINDOWS_ARTIFACT:-}" ] && [ -f "${WINDOWS_ARTIFACT:-}" ]; then
+                log "macOS DMG + whisper-cli.exe uploaded. GitHub Actions will:"
+                echo "    • Download whisper-cli.exe from local-builds"
+            else
+                log "macOS DMG uploaded. GitHub Actions will:"
+                echo "    • Compile whisper.cpp on the Windows runner (no Docker artifact)"
+            fi
+            echo "    • Build the Flutter Windows app on a Windows runner"
+            echo "    • Bundle whisper-cli.exe into the Windows installer"
+            echo "    • Create the GitHub Release with both macOS + Windows artifacts"
+            echo "    • Update the website download links"
+            echo ""
+            echo "  Monitor: https://github.com/${repo_slug}/actions"
             ;;
         4)
             info "Skipped publishing. You can publish later with:"
@@ -732,14 +789,24 @@ upload_local_builds() {
             --prerelease 2>/dev/null || true
     fi
 
-    # Delete old assets and upload new ones
+    # Before uploading, purge ALL existing macOS, Windows, and whisper assets so old
+    # versions don't accumulate and get accidentally picked up by the CI workflow.
+    info "Removing old assets from 'local-builds' release..."
+    local existing_ids
+    existing_ids=$(gh api "repos/$repo_slug/releases/tags/local-builds" \
+        --jq '.assets[] | select(.name | test("macOS|Windows|whisper")) | .id' 2>/dev/null || true)
+    if [ -n "$existing_ids" ]; then
+        while IFS= read -r asset_id; do
+            [ -n "$asset_id" ] && \
+                gh api -X DELETE "repos/$repo_slug/releases/assets/$asset_id" \
+                --silent && echo "    Removed asset id=$asset_id"
+        done <<< "$existing_ids"
+    fi
+
+    # Upload new assets
     for asset in "${assets[@]}"; do
         local basename
         basename=$(basename "$asset")
-        # Delete existing asset with same name (if any)
-        gh release delete-asset local-builds "$basename" \
-            --repo "$repo_slug" --yes 2>/dev/null || true
-        # Upload new asset
         gh release upload local-builds "$asset" \
             --repo "$repo_slug" --clobber
         log "Uploaded: $basename"

@@ -1,143 +1,58 @@
-# VoiceInk — Manual Release Workflow
-# Builds macOS DMG + Windows Setup EXE, then publishes a GitHub Release.
-# Supports: CI builds, local pre-uploaded builds, or mix of both.
-# Trigger: Manual only (workflow_dispatch) — never runs on push/PR.
+# VoiceInk — Release Workflow
+#
+# Flow:
+#   1. Developer runs `bash publish.sh` on macOS:
+#      - Builds macOS DMG locally
+#      - Uploads DMG to the 'local-builds' staging release (clears old versions first)
+#      - Commits version bump, pushes git tag  ←  triggers THIS workflow
+#
+#   2. This workflow (triggered by the tag push):
+#      - Builds Windows installer on a GitHub-hosted Windows runner
+#      - Downloads the exact-version macOS DMG from 'local-builds'
+#      - Creates the public GitHub Release with both artifacts
+#      - Calls update-website to refresh the download links on the website
+#
+# Can also be triggered manually via workflow_dispatch (macOS must already be
+# uploaded to local-builds for the given version).
 
 name: Release
 
 on:
+  push:
+    tags:
+      - 'v[0-9]*'         # e.g. v1.0.0, v2.3.1
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g. v1.0.0)'
+        description: 'Version tag (e.g. v1.0.0) — macOS DMG must already be in local-builds release'
         required: true
         type: string
-      create_release:
-        description: 'Create GitHub Release with artifacts'
-        required: true
-        type: boolean
-        default: true
-      build_macos:
-        description: 'Build macOS DMG in CI'
-        type: boolean
-        default: true
-      build_windows:
-        description: 'Build Windows EXE in CI'
-        type: boolean
-        default: true
-      use_local_macos:
-        description: 'Use pre-uploaded macOS build (from local-builds tag)'
-        type: boolean
-        default: false
-      use_local_windows:
-        description: 'Use pre-uploaded Windows build (from local-builds tag)'
-        type: boolean
-        default: false
 
+# Never cancel a running release mid-flight.
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
-  # ── Build macOS (Apple Silicon) ──────────────────────────────────────────
-  build-macos:
-    if: inputs.build_macos && !inputs.use_local_macos
-    runs-on: macos-14
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Install CocoaPods dependencies
-        working-directory: macos
-        run: pod install
-
-      - name: Patch Swift concurrency for Xcode 16+
-        working-directory: macos
-        run: |
-          echo "Patching all Pod xcconfig files for SWIFT_STRICT_CONCURRENCY..."
-          find Pods/Target\ Support\ Files -name '*.xcconfig' | while IFS= read -r f; do
-            if ! grep -q 'SWIFT_STRICT_CONCURRENCY' "$f"; then
-              echo 'SWIFT_STRICT_CONCURRENCY = minimal' >> "$f"
-              echo "  Patched: $f"
-            fi
-          done
-          echo "Done."
-
-      - name: Extract version number
-        id: version
-        run: |
-          VER="${{ inputs.version }}"
-          VER="${VER#v}"
-          echo "semver=$VER" >> "$GITHUB_OUTPUT"
-
-      - name: Build macOS release
-        run: flutter build macos --release
-
-      - name: Code sign (ad-hoc)
-        run: |
-          APP_BUNDLE=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
-          if [ -z "$APP_BUNDLE" ]; then
-            echo "ERROR: No .app bundle found!"
-            exit 1
-          fi
-          echo "Signing: $APP_BUNDLE"
-          codesign --deep --force --sign - "$APP_BUNDLE"
-
-      - name: Create DMG
-        run: |
-          brew install create-dmg
-          APP_NAME="VoiceInk"
-          VER="${{ steps.version.outputs.semver }}"
-          DMG_NAME="${APP_NAME}-${VER}-macOS-arm64.dmg"
-          APP_BUNDLE=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
-          APP_BASENAME=$(basename "$APP_BUNDLE")
-
-          create-dmg \
-            --volname "$APP_NAME" \
-            --window-pos 200 120 \
-            --window-size 600 400 \
-            --icon-size 100 \
-            --icon "$APP_BASENAME" 175 190 \
-            --app-drop-link 425 190 \
-            "$DMG_NAME" \
-            "$APP_BUNDLE" || true
-
-          # Fallback to ZIP if DMG creation failed
-          if [ ! -f "$DMG_NAME" ]; then
-            echo "::warning::DMG creation failed, creating ZIP instead"
-            cd build/macos/Build/Products/Release
-            zip -r "${GITHUB_WORKSPACE}/${APP_NAME}-${VER}-macOS-arm64.zip" "$APP_BASENAME"
-          fi
-
-      - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-build
-          path: |
-            VoiceInk-*-macOS-arm64.dmg
-            VoiceInk-*-macOS-arm64.zip
-          if-no-files-found: error
-          retention-days: 5
-
-  # ── Build Windows (x64) + Installer ─────────────────────────────────────
+  # ── Build Windows installer on GitHub's Windows runner ──────────────────────
   build-windows:
-    if: inputs.build_windows && !inputs.use_local_windows
     runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Extract version
+        id: version
+        shell: pwsh
+        run: |
+          $tag = if ('${{ inputs.version }}' -ne '') { '${{ inputs.version }}' } else { '${{ github.ref_name }}' }
+          $ver = $tag -replace '^v', ''
+          "tag=$tag"    | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "semver=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Building version $ver (tag: $tag)"
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -149,43 +64,129 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows release
-        run: flutter build windows --release
+        run: flutter build windows --release --build-name="${{ steps.version.outputs.semver }}"
 
-      - name: Find build output
+      - name: Find build output directory
         id: build-path
         shell: pwsh
         run: |
           if (Test-Path "build\windows\x64\runner\Release") {
-            echo "release_dir=build\windows\x64\runner\Release" >> $env:GITHUB_OUTPUT
+            "release_dir=build\windows\x64\runner\Release" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           } elseif (Test-Path "build\windows\runner\Release") {
-            echo "release_dir=build\windows\runner\Release" >> $env:GITHUB_OUTPUT
+            "release_dir=build\windows\runner\Release" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           } else {
-            Write-Error "Build output not found!"
+            Write-Error "Windows build output not found!"
             exit 1
           }
 
-      - name: Install Inno Setup
+      # ── Bundle whisper-cli.exe ─────────────────────────────────────────────
+      # The app expects whisper-cli.exe at: <release_dir>\data\whisper.cpp\bin\whisper-cli.exe
+      # Try 1: Download the pre-cross-compiled binary from local-builds (fastest).
+      # Try 2: If not available, compile whisper.cpp natively on this Windows runner.
+      - name: Download whisper-cli.exe from local-builds (if available)
+        id: download-whisper
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          choco install innosetup -y --no-progress
-          echo "C:\Program Files (x86)\Inno Setup 6" >> $env:GITHUB_PATH
+          $ver = "${{ steps.version.outputs.semver }}"
+          $artifact = "VoiceInk-${ver}-whisper-windows-x64.zip"
+          $tmpDir = "tmp-whisper"
+          New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
 
-      - name: Extract version number
-        id: version
+          Write-Host "Trying to download ${artifact} from local-builds..."
+          $result = gh release download local-builds `
+            --repo "${{ github.repository }}" `
+            --pattern $artifact `
+            --dir $tmpDir 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✓ Downloaded ${artifact}"
+            "found=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            "zip_path=${tmpDir}\${artifact}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          } else {
+            Write-Host "Not found in local-builds — will compile on runner."
+            "found=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
+
+      - name: Compile whisper-cli.exe on runner (fallback)
+        if: steps.download-whisper.outputs.found != 'true'
         shell: pwsh
         run: |
-          $ver = "${{ inputs.version }}" -replace '^v',''
-          echo "semver=$ver" >> $env:GITHUB_OUTPUT
+          Write-Host "Installing CMake and git..."
+          choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y --no-progress
+          refreshenv
+
+          Write-Host "Cloning whisper.cpp..."
+          git clone --depth 1 --branch v1.7.4 https://github.com/ggerganov/whisper.cpp.git tmp-whisper-src
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Tag v1.7.4 not found, cloning main..."
+            git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git tmp-whisper-src
+          }
+
+          Write-Host "Building whisper-cli..."
+          New-Item -ItemType Directory -Force -Path tmp-whisper-src\build | Out-Null
+          Push-Location tmp-whisper-src\build
+          cmake .. -DBUILD_SHARED_LIBS=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON
+          cmake --build . --config Release --target whisper-cli
+          Pop-Location
+
+          $exe = Get-ChildItem -Path tmp-whisper-src\build -Filter "whisper-cli.exe" -Recurse | Select-Object -First 1
+          if (-not $exe) { Write-Error "whisper-cli.exe not found after build!"; exit 1 }
+
+          New-Item -ItemType Directory -Force -Path "tmp-whisper" | Out-Null
+          Copy-Item $exe.FullName "tmp-whisper\whisper-cli.exe"
+          Write-Host "✓ Compiled whisper-cli.exe"
+          # Create a ZIP to match the extraction step below
+          Compress-Archive -Path "tmp-whisper\whisper-cli.exe" -DestinationPath "tmp-whisper\fallback.zip"
+          "zip_path=tmp-whisper\fallback.zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        id: compile-whisper
+
+      - name: Bundle whisper-cli.exe into Flutter build output
+        shell: pwsh
+        run: |
+          $releaseDir = "${{ steps.build-path.outputs.release_dir }}"
+          $destDir    = "${releaseDir}\data\whisper.cpp\bin"
+          New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+
+          # Determine the ZIP source (downloaded or compiled fallback)
+          $zipPath = "${{ steps.download-whisper.outputs.zip_path }}"
+          if (-not $zipPath) { $zipPath = "${{ steps.compile-whisper.outputs.zip_path }}" }
+
+          if ($zipPath -and (Test-Path $zipPath)) {
+            Expand-Archive -Path $zipPath -DestinationPath $destDir -Force
+            Write-Host "✓ Extracted from ZIP: $zipPath → $destDir"
+          } elseif (Test-Path "tmp-whisper\whisper-cli.exe") {
+            Copy-Item "tmp-whisper\whisper-cli.exe" $destDir
+            Write-Host "✓ Copied whisper-cli.exe → $destDir"
+          } else {
+            Write-Error "No whisper-cli.exe available to bundle!"
+            exit 1
+          }
+
+          $bundled = Join-Path $destDir "whisper-cli.exe"
+          if (Test-Path $bundled) {
+            Write-Host "✓ whisper-cli.exe bundled at: $bundled"
+            Write-Host "  Size: $((Get-Item $bundled).Length / 1MB) MB"
+          } else {
+            Write-Error "whisper-cli.exe missing from expected path!"
+            exit 1
+          }
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
 
       - name: Build installer EXE
         shell: pwsh
         run: |
-          $releaseDir = "${{ steps.build-path.outputs.release_dir }}"
-          $absReleaseDir = (Resolve-Path $releaseDir).Path
-          $ver = "${{ steps.version.outputs.semver }}"
-          & "iscc" "/DMyAppVersion=$ver" "/DSourceDir=$absReleaseDir" "/DMyOutputFilename=VoiceInk-$ver-Windows-x64-Setup" "windows\installer\setup.iss"
+          $releaseDir = (Resolve-Path "${{ steps.build-path.outputs.release_dir }}").Path
+          $ver        = "${{ steps.version.outputs.semver }}"
+          $outName    = "VoiceInk-${ver}-Windows-x64-Setup"
+          & "C:\Program Files (x86)\Inno Setup 6\iscc.exe" `
+              "/DMyAppVersion=$ver" `
+              "/DSourceDir=$releaseDir" `
+              "/DMyOutputFilename=$outName" `
+              "windows\installer\setup.iss"
 
-      - name: Upload Windows installer
+      - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-build
@@ -193,123 +194,107 @@ jobs:
           if-no-files-found: error
           retention-days: 5
 
-  # ── Create GitHub Release ───────────────────────────────────────────────
+  # ── Create GitHub Release ───────────────────────────────────────────────────
   release:
-    needs: [build-macos, build-windows]
-    if: |
-      always() &&
-      inputs.create_release
+    needs: [build-windows]
+    if: needs.build-windows.result == 'success'
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Extract version number
+      - name: Extract version
         id: version
         run: |
-          VER="${{ inputs.version }}"
-          VER="${VER#v}"
-          echo "semver=$VER" >> "$GITHUB_OUTPUT"
-
-      - name: Create tag if missing
-        run: |
           TAG="${{ inputs.version }}"
+          [ -z "$TAG" ] && TAG="${{ github.ref_name }}"
+          VER="${TAG#v}"
+          echo "tag=$TAG"    >> "$GITHUB_OUTPUT"
+          echo "semver=$VER" >> "$GITHUB_OUTPUT"
+          echo "Creating release $TAG (version: $VER)"
+
+      - name: Ensure tag exists
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
           if ! git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
-            git config user.name "github-actions[bot]"
+            git config user.name  "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git tag -a "$TAG" -m "VoiceInk $TAG"
             git push origin "$TAG"
             echo "✓ Created and pushed tag $TAG"
           else
-            echo "Tag $TAG already exists"
+            echo "Tag $TAG already exists — OK"
           fi
 
-      - name: Download CI macOS artifacts
-        if: inputs.build_macos && !inputs.use_local_macos && needs.build-macos.result == 'success'
-        uses: actions/download-artifact@v4
-        with:
-          name: macos-build
-          path: artifacts/macos
-        continue-on-error: true
-
-      - name: Download CI Windows artifacts
-        if: inputs.build_windows && !inputs.use_local_windows && needs.build-windows.result == 'success'
+      - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
           name: windows-build
           path: artifacts/windows
-        continue-on-error: true
 
-      - name: Download local macOS build
-        if: inputs.use_local_macos
+      - name: Download macOS build from local-builds
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p artifacts/macos
-          echo "Downloading macOS build from 'local-builds' release..."
+          VER="${{ steps.version.outputs.semver }}"
+
+          # Download the EXACT version — never use a wildcard to avoid picking up
+          # stale files from previous releases that may still be in local-builds.
+          echo "Downloading VoiceInk-${VER}-macOS-arm64.dmg from local-builds..."
           if gh release download local-builds \
               --repo "${{ github.repository }}" \
-              --pattern "VoiceInk-*-macOS-arm64.*" \
+              --pattern "VoiceInk-${VER}-macOS-arm64.dmg" \
               --dir artifacts/macos 2>/dev/null; then
-            echo "✓ Downloaded local macOS build"
-            ls -la artifacts/macos/
+            echo "✓ macOS DMG downloaded"
           else
-            echo "::warning::No macOS build found in 'local-builds' release"
-          fi
-
-      - name: Download local Windows build
-        if: inputs.use_local_windows
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir -p artifacts/windows
-          echo "Downloading Windows build from 'local-builds' release..."
-          if gh release download local-builds \
+            echo "DMG not found — trying ZIP fallback..."
+            gh release download local-builds \
               --repo "${{ github.repository }}" \
-              --pattern "VoiceInk-*-Windows-x64-Setup.*" \
-              --dir artifacts/windows 2>/dev/null; then
-            echo "✓ Downloaded local Windows build"
-            ls -la artifacts/windows/
-          else
-            echo "::warning::No Windows build found in 'local-builds' release"
+              --pattern "VoiceInk-${VER}-macOS-arm64.zip" \
+              --dir artifacts/macos || {
+                echo "::error::No macOS build for version ${VER} found in the local-builds release."
+                echo "::error::On macOS, run:  bash publish.sh  and choose option 3 to upload the build first."
+                exit 1
+              }
           fi
-
-      - name: List artifacts
-        run: |
-          echo "=== Artifact contents ==="
-          find artifacts -type f -ls 2>/dev/null || echo "No artifacts directory"
+          ls -lh artifacts/macos/
 
       - name: Collect release files
         id: files
         run: |
-          MACOS_FILE=$(find artifacts/macos -type f \( -name "*.dmg" -o -name "*.zip" \) 2>/dev/null | head -1 || true)
-          WIN_FILE=$(find artifacts/windows -type f -name "*.exe" 2>/dev/null | head -1 || true)
+          VER="${{ steps.version.outputs.semver }}"
 
+          # Match only the exact version — never rely on alphabetical sort.
+          MACOS_FILE=$(find artifacts/macos -type f \
+              \( -name "VoiceInk-${VER}-macOS-arm64.dmg" \
+              -o -name "VoiceInk-${VER}-macOS-arm64.zip" \) | head -1 || true)
+          WIN_FILE=$(find artifacts/windows -type f -name "VoiceInk-${VER}-Windows-x64-Setup.exe" \
+              2>/dev/null | head -1 || true)
+
+          FILES=""
           MACOS_NAME="N/A"
           WIN_NAME="N/A"
-          FILES=""
 
           if [ -n "$MACOS_FILE" ] && [ -f "$MACOS_FILE" ]; then
             MACOS_NAME=$(basename "$MACOS_FILE")
             FILES="$MACOS_FILE"
-            echo "✓ macOS artifact: $MACOS_NAME"
+            echo "✓ macOS: $MACOS_NAME"
+          else
+            echo "::error::macOS artifact not found for version ${VER}!"
+            exit 1
           fi
 
           if [ -n "$WIN_FILE" ] && [ -f "$WIN_FILE" ]; then
             WIN_NAME=$(basename "$WIN_FILE")
-            if [ -n "$FILES" ]; then
-              FILES=$(printf '%s\n%s' "$FILES" "$WIN_FILE")
-            else
-              FILES="$WIN_FILE"
-            fi
-            echo "✓ Windows artifact: $WIN_NAME"
-          fi
-
-          if [ -z "$FILES" ]; then
-            echo "::error::No release artifacts found!"
-            exit 1
+            FILES=$(printf '%s\n%s' "$FILES" "$WIN_FILE")
+            echo "✓ Windows: $WIN_NAME"
+          else
+            echo "::warning::Windows EXE not found — release will be macOS-only"
           fi
 
           {
@@ -320,21 +305,18 @@ jobs:
           echo "macos_name=$MACOS_NAME" >> "$GITHUB_OUTPUT"
           echo "windows_name=$WIN_NAME" >> "$GITHUB_OUTPUT"
 
-          echo "=== Files to upload ==="
-          echo "$FILES"
-
-      - name: Create Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ inputs.version }}
-          name: VoiceInk ${{ inputs.version }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: VoiceInk ${{ steps.version.outputs.tag }}
           draft: false
           prerelease: false
           make_latest: true
           body: |
-            # VoiceInk ${{ inputs.version }}
+            # VoiceInk ${{ steps.version.outputs.tag }}
 
             **Local, on-device voice dictation for macOS & Windows** — 100% free, 100% private.
 
@@ -369,11 +351,11 @@ jobs:
             - No accounts, no ads, no analytics
           files: ${{ steps.files.outputs.files }}
 
-  # ── Update Website Download Links ──────────────────────────────────────
+  # ── Update website download links ──────────────────────────────────────────
   update-website:
     needs: [release]
     if: needs.release.result == 'success'
     uses: ./.github/workflows/update-website.yml
     with:
-      release_tag: ${{ inputs.version }}
+      release_tag: ${{ needs.release.outputs.tag }}
     secrets: inherit
