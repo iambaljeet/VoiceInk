@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>VoiceInk — Free Local Voice Dictation for Mac &amp; Windows</title>
-  <meta name="description" content="VoiceInk is a free, privacy-first voice dictation app for macOS and Windows. No ads, no cloud, no credit card. Just download and speak." />
+  <meta name="description" content="VoiceInk is a free, privacy-first voice dictation app for macOS and Windows. Dual STT engines (Whisper.cpp + Sherpa-ONNX), 18 AI models, writing styles, custom dictionary, and stats tracking. No ads, no cloud, no credit card." />
   <meta name="keywords" content="voice dictation, speech to text, macOS, Windows, offline, privacy, free, whisper, voice typing" />
   <meta name="author" content="Baljeet" />
 
@@ -23,6 +23,17 @@
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet" />
 
   <link rel="stylesheet" href="styles.css" />
+  <style>
+    .engine-divider-row td {
+      background: rgba(59,130,246,0.08);
+      color: #60a5fa;
+      font-weight: 600;
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 8px 16px;
+    }
+  </style>
 </head>
 <body>
 
@@ -173,7 +184,7 @@
             <span class="material-icons-round">keyboard</span>
           </div>
           <h3>Push-to-Talk</h3>
-          <p>Hold the fn key (or your chosen shortcut) to speak, release to type. Your words appear instantly in any text field or app. Three activation modes: Fn Key, Function Key, or Key Combination.</p>
+          <p>Hold to speak, release to type — your words appear instantly in any app. Three activation modes: Fn Key (macOS only), Function Key (F5–F12), or Key Combination (⌥Space, ⌃Space, ⌥⇧Space).</p>
         </div>
 
         <div class="feature-card">
@@ -181,15 +192,39 @@
             <span class="material-icons-round">psychology</span>
           </div>
           <h3>Dual STT Engines</h3>
-          <p>Choose between Whisper.cpp (CLI) and Sherpa-ONNX (native FFI) speech-to-text engines. Pick from 9+ Whisper models or high-performance ONNX models for the perfect balance of speed and accuracy.</p>
+          <p>Choose between Whisper.cpp (CLI) and Sherpa-ONNX (native FFI) speech-to-text engines. 9 Whisper models and 9 ONNX models — 18 AI models total — for the perfect balance of speed and accuracy.</p>
         </div>
 
         <div class="feature-card">
           <div class="feature-icon-wrap">
             <span class="material-icons-round">translate</span>
           </div>
-          <h3>52+ Languages</h3>
-          <p>Full multilingual support including English, Spanish, French, German, Japanese, Chinese, Hindi, Arabic, and many more.</p>
+          <h3>50+ Languages</h3>
+          <p>Whisper.cpp supports 57 languages including English, Spanish, French, German, Japanese, Chinese, Hindi, Arabic, and more. Sherpa-ONNX models add English, Chinese, Japanese, Korean, Cantonese, and others depending on model.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <span class="material-icons-round">style</span>
+          </div>
+          <h3>Writing Styles</h3>
+          <p>Four output styles to match your context — Verbatim (word-for-word), Clean (removes fillers), Formal (professional), and Chat (conversational).</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <span class="material-icons-round">menu_book</span>
+          </div>
+          <h3>Custom Dictionary</h3>
+          <p>Define your own word replacement rules. Correct domain-specific terms, fix recurring misrecognitions, or auto-expand abbreviations — automatically applied to every transcription.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <span class="material-icons-round">bar_chart</span>
+          </div>
+          <h3>Stats &amp; Streaks</h3>
+          <p>Track your dictation habits — words transcribed today, this month, and all-time, plus your daily usage streak to build a speaking routine.</p>
         </div>
 
         <div class="feature-card">
@@ -221,7 +256,7 @@
             <span class="material-icons-round">tune</span>
           </div>
           <h3>Customizable Shortcuts</h3>
-          <p>Three activation modes: hold the fn key (default), a single function key (F5–F12), or key combinations (⌥Space, ⌃Space, ⌥⇧Space). Pick what fits your workflow.</p>
+          <p>Three activation modes: hold the fn key (macOS only), a single function key (F5–F12), or key combinations (⌥Space, ⌃Space, ⌥⇧Space). Pick what fits your workflow.</p>
         </div>
       </div>
     </div>
@@ -324,7 +359,7 @@
             <span class="material-icons-round">settings_voice</span>
           </div>
           <h3>Choose Your Model</h3>
-          <p>Pick a Whisper model (Tiny for speed, Large for accuracy). It downloads once — then works offline forever.</p>
+          <p>Pick your STT engine (Whisper.cpp or Sherpa-ONNX) and download a model. Tiny for speed, Large V3 Turbo for best accuracy — downloads once, works offline forever.</p>
         </div>
 
         <div class="step-connector">
@@ -349,7 +384,7 @@
       <div class="section-header">
         <span class="section-label">STT Engines &amp; Models</span>
         <h2 class="section-title">Two engines. Your choice.</h2>
-        <p class="section-subtitle">VoiceInk supports both <strong>Whisper.cpp</strong> and <strong>Sherpa-ONNX</strong> speech-to-text engines. Switch between them in Settings. All models run 100% locally on your machine.</p>
+        <p class="section-subtitle">VoiceInk supports both <strong>Whisper.cpp</strong> and <strong>Sherpa-ONNX</strong> speech-to-text engines. Switch between them in Settings. 18 AI models total — all run 100% locally on your machine.</p>
       </div>
 
       <div class="models-table-wrap">
@@ -368,7 +403,7 @@
             <tr>
               <td><strong>Tiny</strong></td>
               <td>Whisper.cpp</td>
-              <td>English / 52+</td>
+              <td>English / 57 langs</td>
               <td>75 MB</td>
               <td><span class="badge badge-green">Fastest</span></td>
               <td><span class="meter"><span style="width:40%"></span></span></td>
@@ -376,7 +411,7 @@
             <tr>
               <td><strong>Base</strong></td>
               <td>Whisper.cpp</td>
-              <td>English / 52+</td>
+              <td>English / 57 langs</td>
               <td>148 MB</td>
               <td><span class="badge badge-green">Fast</span></td>
               <td><span class="meter"><span style="width:55%"></span></span></td>
@@ -384,15 +419,15 @@
             <tr>
               <td><strong>Small</strong></td>
               <td>Whisper.cpp</td>
-              <td>English / 52+</td>
-              <td>487 MB</td>
+              <td>English / 57 langs</td>
+              <td>488 MB</td>
               <td><span class="badge badge-yellow">Medium</span></td>
               <td><span class="meter"><span style="width:72%"></span></span></td>
             </tr>
             <tr>
               <td><strong>Medium</strong></td>
               <td>Whisper.cpp</td>
-              <td>English / 52+</td>
+              <td>English / 57 langs</td>
               <td>1.5 GB</td>
               <td><span class="badge badge-yellow">Medium</span></td>
               <td><span class="meter"><span style="width:85%"></span></span></td>
@@ -400,18 +435,69 @@
             <tr class="recommended-row">
               <td><strong>Large V3 Turbo</strong> <span class="badge badge-purple">Recommended</span></td>
               <td>Whisper.cpp</td>
-              <td>52+</td>
-              <td>1.6 GB</td>
+              <td>57 langs</td>
+              <td>1.5 GB</td>
               <td><span class="badge badge-green">Fast</span></td>
               <td><span class="meter"><span style="width:97%"></span></span></td>
             </tr>
+            <tr class="engine-divider-row">
+              <td colspan="6">Sherpa-ONNX Models</td>
+            </tr>
             <tr>
-              <td><strong>Sherpa ONNX Models</strong></td>
+              <td><strong>Whisper Tiny ONNX</strong></td>
               <td>Sherpa-ONNX</td>
-              <td>Varies</td>
-              <td>Varies</td>
+              <td>57 langs</td>
+              <td>60 MB</td>
+              <td><span class="badge badge-green">Fastest</span></td>
+              <td><span class="meter"><span style="width:40%"></span></span></td>
+            </tr>
+            <tr>
+              <td><strong>Whisper Base ONNX</strong></td>
+              <td>Sherpa-ONNX</td>
+              <td>57 langs</td>
+              <td>160 MB</td>
               <td><span class="badge badge-green">Fast</span></td>
+              <td><span class="meter"><span style="width:55%"></span></span></td>
+            </tr>
+            <tr>
+              <td><strong>SenseVoice Small</strong></td>
+              <td>Sherpa-ONNX</td>
+              <td>ZH/EN/JP/KR/Yue</td>
+              <td>230 MB</td>
+              <td><span class="badge badge-green">Very Fast</span></td>
               <td><span class="meter"><span style="width:80%"></span></span></td>
+            </tr>
+            <tr>
+              <td><strong>Moonshine Tiny</strong></td>
+              <td>Sherpa-ONNX</td>
+              <td>English</td>
+              <td>70 MB</td>
+              <td><span class="badge badge-green">Ultra-fast</span></td>
+              <td><span class="meter"><span style="width:45%"></span></span></td>
+            </tr>
+            <tr>
+              <td><strong>Moonshine Base</strong></td>
+              <td>Sherpa-ONNX</td>
+              <td>English</td>
+              <td>290 MB</td>
+              <td><span class="badge badge-green">Fast</span></td>
+              <td><span class="meter"><span style="width:65%"></span></span></td>
+            </tr>
+            <tr>
+              <td><strong>Paraformer English</strong></td>
+              <td>Sherpa-ONNX</td>
+              <td>English</td>
+              <td>220 MB</td>
+              <td><span class="badge badge-green">Fast</span></td>
+              <td><span class="meter"><span style="width:70%"></span></span></td>
+            </tr>
+            <tr>
+              <td><strong>Paraformer Trilingual</strong></td>
+              <td>Sherpa-ONNX</td>
+              <td>ZH/Yue/EN</td>
+              <td>220 MB</td>
+              <td><span class="badge badge-green">Fast</span></td>
+              <td><span class="meter"><span style="width:75%"></span></span></td>
             </tr>
           </tbody>
         </table>
