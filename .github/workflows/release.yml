@@ -109,6 +109,7 @@ jobs:
           }
 
       - name: Compile whisper-cli.exe on runner (fallback)
+        id: compile-whisper
         if: steps.download-whisper.outputs.found != 'true'
         shell: pwsh
         run: |
@@ -139,7 +140,6 @@ jobs:
           # Create a ZIP to match the extraction step below
           Compress-Archive -Path "tmp-whisper\whisper-cli.exe" -DestinationPath "tmp-whisper\fallback.zip"
           "zip_path=tmp-whisper\fallback.zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        id: compile-whisper
 
       - name: Bundle whisper-cli.exe into Flutter build output
         shell: pwsh
@@ -171,6 +171,8 @@ jobs:
             Write-Error "whisper-cli.exe missing from expected path!"
             exit 1
           }
+
+      - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup -y --no-progress
 
